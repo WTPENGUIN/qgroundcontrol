@@ -20,6 +20,8 @@ struct pqc_tls_ctx_t {
 };
 
 static int g_initialized = 0;
+static OSSL_PROVIDER* g_default_provider = NULL;
+static OSSL_PROVIDER* g_base_provider = NULL;
 
 static void log_msg(pqc_tls_ctx_t* ctx, const char* msg) {
     if (ctx && ctx->log_cb) {
@@ -30,9 +32,25 @@ static void log_msg(pqc_tls_ctx_t* ctx, const char* msg) {
 void pqc_tls_init_library(void) {
     if (g_initialized) return;
     OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
-    OSSL_PROVIDER_load(NULL, "default");
-    OSSL_PROVIDER_load(NULL, "base");
+    g_default_provider = OSSL_PROVIDER_load(NULL, "default");
+    g_base_provider = OSSL_PROVIDER_load(NULL, "base");
     g_initialized = 1;
+}
+
+void pqc_tls_cleanup_library(void) {
+    if (!g_initialized) return;
+    
+    if (g_default_provider) {
+        OSSL_PROVIDER_unload(g_default_provider);
+        g_default_provider = NULL;
+    }
+    
+    if (g_base_provider) {
+        OSSL_PROVIDER_unload(g_base_provider);
+        g_base_provider = NULL;
+    }
+    
+    g_initialized = 0;
 }
 
 pqc_tls_ctx_t* pqc_tls_connect(const char* ip, int port, const char* client_pem, const char* ca_crt, pqc_log_cb_t log_cb, void* user_data) {
@@ -40,6 +58,7 @@ pqc_tls_ctx_t* pqc_tls_connect(const char* ip, int port, const char* client_pem,
 
     pqc_tls_ctx_t* ctx = (pqc_tls_ctx_t*)calloc(1, sizeof(pqc_tls_ctx_t));
     if (!ctx) return NULL;
+    ctx->sockfd = -1;
     ctx->log_cb = log_cb;
     ctx->user_data = user_data;
 
@@ -180,44 +199,6 @@ int pqc_tls_read(pqc_tls_ctx_t* ctx,
     
     return r; // 복호화된 평문 데이터의 길이 반환
 }
-
-// int pqc_tls_read(pqc_tls_ctx_t* ctx, uint8_t* dec_buf, int max_len, int* encrypted_len) {
-//     if (!ctx || !ctx->ssl || !encrypted_len) return -1;
-    
-//     *encrypted_len = 0;
-    
-//     // TLS 레코드는 암호화되어 소켓에 있음. 읽기 전에 소켓 버퍼 크기 확인
-//     // (MSG_PEEK으로 TLS 레코드 크기 추정)
-//     uint8_t peek_buf[5];
-//     int peek_len = recv(ctx->sockfd, peek_buf, sizeof(peek_buf), MSG_PEEK | MSG_DONTWAIT);
-//     if (peek_len > 0) {
-//         // TLS 레코드 헤더: [ContentType(1)] [Version(2)] [Length(2)]
-//         // 길이는 빅엔디안으로 인코딩됨 (최대 16KB + 헤더 = 16389 바이트)
-//         if (peek_len >= 5) {
-//             int tls_record_len = (peek_buf[3] << 8) | peek_buf[4];
-//             *encrypted_len = tls_record_len + 5;  // 헤더 + 페이로드
-//         }
-//     }
-    
-//     // SSL_read()로 복호화된 데이터를 읽음
-//     int r = SSL_read(ctx->ssl, dec_buf, max_len);
-//     if (r <= 0) {
-//         int err = SSL_get_error(ctx->ssl, r);
-//         if (err == SSL_ERROR_WANT_READ) {
-//             return 0;
-//         } else if (err == SSL_ERROR_WANT_WRITE) {
-//             return 0;
-//         } else {
-//             char errbuf[256];
-//             unsigned long ssl_err = ERR_get_error();
-//             snprintf(errbuf, sizeof(errbuf), "SSL_read: Connection error: %s", ERR_error_string(ssl_err, NULL));
-//             log_msg(ctx, errbuf);
-//             return -1;
-//         }
-//     }
-    
-//     return r;
-// }
 
 int pqc_tls_write(pqc_tls_ctx_t* ctx, const uint8_t* buf, int len) {
     if (!ctx || !ctx->ssl) return -1;

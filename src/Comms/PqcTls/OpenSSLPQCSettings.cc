@@ -20,7 +20,8 @@ QGC_LOGGING_CATEGORY(OpenSSLPQCLog, "qgc.etri.pqc")
 static OpenSSLPQCSettings* g_pqcSettingsInstance = nullptr;
 static QString s_currentImportTarget = "";
 
-// ========== Constructor ==========
+// ========== Constructor / Destructor ==========
+
 OpenSSLPQCSettings::OpenSSLPQCSettings(QObject *parent) : QObject(parent)
 {
     qCDebug(OpenSSLPQCLog) << "OpenSSLPQCSettings Singleton created";
@@ -28,6 +29,26 @@ OpenSSLPQCSettings::OpenSSLPQCSettings(QObject *parent) : QObject(parent)
 #if defined(Q_OS_ANDROID)
     registerJNICallback();
 #endif
+}
+
+OpenSSLPQCSettings::~OpenSSLPQCSettings()
+{
+    // 1. Disconnect from server (closes connection and cleans up notifiers)
+    disconnectFromServer();
+    
+    // 2. Clean up worker thread
+    if (_connectionWorker) {
+        qCDebug(OpenSSLPQCLog) << "[Destructor] Cleaning up worker thread...";
+        if (_connectionWorker->isRunning()) {
+            _connectionWorker->requestInterruption();
+            _connectionWorker->wait(5000);
+        }
+        _connectionWorker->deleteLater();
+        _connectionWorker = nullptr;
+    }
+    
+    // 3. Cleanup OpenSSL library
+    pqc_tls_cleanup_library();
 }
 
 // ========== Server Configuration Setters ==========
@@ -183,33 +204,45 @@ void OpenSSLPQCSettings::connectToServer()
     
     qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Starting async connection...";
     
-    // Create worker thread if not exists
-    if (!_connectionWorker) {
-        _connectionWorker = new PQCTLSConnectionWorker(this);
-        
-        // Connect worker finished signal
-        connect(_connectionWorker, static_cast<void(PQCTLSConnectionWorker::*)(bool, void*)>(&PQCTLSConnectionWorker::finished),
-                this, [this](bool success, void* ctx) {
-            if (success && ctx) {
-                qCDebug(OpenSSLPQCLog) << "[PQC-Main] ✅ Connection established!";
-                _pqcCtx = static_cast<pqc_tls_ctx_t*>(ctx);
-                setupSocketNotifiers();
-                setServerConnected(true);
-                emit connectionStatusChanged("connected");
-            } else {
-                qCCritical(OpenSSLPQCLog) << "[PQC-Main] ❌ Connection failed";
-                setServerConnected(false);
-                emit connectionStatusChanged("error");
-                emit connectionError("Failed to establish PQC TLS connection");
-            }
-            _isConnecting = false;
-        });
-        
-        connect(_connectionWorker, &QThread::finished,
-                _connectionWorker, &QObject::deleteLater);
-        
-        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Worker thread created";
+    // Clean up existing worker thread before creating a new one
+    // QThread can only be started once, so we must create a new instance for each connection
+    if (_connectionWorker) {
+        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Cleaning up previous worker thread...";
+        if (_connectionWorker->isRunning()) {
+            _connectionWorker->requestInterruption();
+            _connectionWorker->wait(5000);
+        }
+        _connectionWorker->deleteLater();
+        _connectionWorker = nullptr;
     }
+    
+    // Create a new worker thread for this connection attempt
+    _connectionWorker = new PQCTLSConnectionWorker(this);
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] New worker thread created";
+    
+    // Connect worker finished signal
+    connect(_connectionWorker, static_cast<void(PQCTLSConnectionWorker::*)(bool, void*)>(&PQCTLSConnectionWorker::finished),
+            this, [this](bool success, void* ctx) {
+        if (success && ctx) {
+            qCDebug(OpenSSLPQCLog) << "[PQC-Main] ✅ Connection established!";
+            _pqcCtx = static_cast<pqc_tls_ctx_t*>(ctx);
+            setupSocketNotifiers();
+            setServerConnected(true);
+            emit connectionStatusChanged("connected");
+        } else {
+            qCCritical(OpenSSLPQCLog) << "[PQC-Main] ❌ Connection failed";
+            setServerConnected(false);
+            emit connectionStatusChanged("error");
+            emit connectionError("Failed to establish PQC TLS connection");
+        }
+        _isConnecting = false;
+    });
+    
+    // connect(_connectionWorker, &QThread::finished, _connectionWorker, &QObject::deleteLater);
+    connect(_connectionWorker, &QThread::finished, this, [this]() {
+        _connectionWorker->deleteLater();
+        _connectionWorker = nullptr;
+    });
     
     // Set worker parameters
     _connectionWorker->_ip = _serverIpAddress;
@@ -219,11 +252,9 @@ void OpenSSLPQCSettings::connectToServer()
     
     qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connection parameters set";
     
-    // Start worker thread
-    if (!_connectionWorker->isRunning()) {
-        _connectionWorker->start();
-        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Worker thread started";
-    }
+    // Start the new worker thread
+    _connectionWorker->start();
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] New worker thread started";
     
     qCDebug(OpenSSLPQCLog) << "[PQC-Connect] ⬅️  Main thread returns immediately (UI responsive!)";
     qCDebug(OpenSSLPQCLog) << "";
@@ -236,13 +267,15 @@ void OpenSSLPQCSettings::disconnectFromServer()
     qCDebug(OpenSSLPQCLog) << "============================================";
     qCDebug(OpenSSLPQCLog) << "";
     
-    // Clean up socket notifiers first
-    cleanupSocketNotifiers();
-    
-    // Mutex lock for safe context cleanup
+    // Mutex lock for safe cleanup - protects against concurrent access from socket notifiers
     {
         QMutexLocker locker(&_contextMutex);
         
+        // Clean up socket notifiers first (must be within mutex protection)
+        // This prevents race conditions with onSocketReadyRead/onSocketReadyWrite
+        cleanupSocketNotifiers();
+        
+        // Close PQC TLS connection
         if (_pqcCtx) {
             qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Closing PQC TLS connection...";
             pqc_tls_close(_pqcCtx);
@@ -252,7 +285,7 @@ void OpenSSLPQCSettings::disconnectFromServer()
     
     qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Connection closed";
     
-    // Clear buffers
+    // Clear buffers (no mutex needed - no concurrent access)
     _readBuffer.clear();
     _writeBuffer.clear();
     

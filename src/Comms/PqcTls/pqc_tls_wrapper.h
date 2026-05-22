@@ -14,6 +14,7 @@ typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
 typedef void (*pqc_log_cb_t)(void* user_data, const char* msg);
 
 void pqc_tls_init_library(void);
+void pqc_tls_cleanup_library(void);
 
 // 컨텍스트 생성 (로깅 콜백 포함)
 pqc_tls_ctx_t* pqc_tls_connect(const char* ip, int port, 

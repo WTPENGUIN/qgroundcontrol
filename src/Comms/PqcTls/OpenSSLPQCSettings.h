@@ -41,6 +41,7 @@ class OpenSSLPQCSettings : public QObject
 
 public:
     explicit OpenSSLPQCSettings(QObject *parent = nullptr);
+    ~OpenSSLPQCSettings();
 
     // ========== Server Configuration Properties ==========
     Q_PROPERTY(QString  serverIpAddress        READ serverIpAddress        WRITE setServerIpAddress        NOTIFY serverIpAddressChanged)
