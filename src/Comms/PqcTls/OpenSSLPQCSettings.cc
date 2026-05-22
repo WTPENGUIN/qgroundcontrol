@@ -463,7 +463,7 @@ QByteArray OpenSSLPQCSettings::readData(int maxSize)
     
     // Read all available data from socket
     while (true) {
-        int n = pqc_tls_read(_pqcCtx, buf, maxSize, &encrypted_len);
+        int n = pqc_tls_read(_pqcCtx, buf, maxSize, NULL, 0, &encrypted_len);
         
         if (n > 0) {
             _readBuffer.append((const char*)buf, n);
@@ -547,6 +547,7 @@ int OpenSSLPQCSettings::writeData(const QByteArray& data)
 void OpenSSLPQCSettings::onSocketReadyRead()
 {
     uint8_t buf[4096];
+    uint8_t enc_buf[16400];  // Encrypted packet buffer
     int encrypted_len = 0;
     
     QMutexLocker locker(&_contextMutex);
@@ -556,10 +557,17 @@ void OpenSSLPQCSettings::onSocketReadyRead()
         return;
     }
     
-    int n = pqc_tls_read(_pqcCtx, buf, sizeof(buf), &encrypted_len);
+    int n = pqc_tls_read(_pqcCtx, buf, sizeof(buf), enc_buf, sizeof(enc_buf), &encrypted_len);
     
     if (n > 0) {
         qCDebug(OpenSSLPQCLog) << "[ReadEvent] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
+        
+        // Capture encrypted and decrypted packets
+        appendRawPacket(enc_buf, encrypted_len);
+        appendDecryptedPacket(buf, n);
+        emit rawPacketHexChanged();
+        emit decryptedPacketHexChanged();
+        
         _readBuffer.append((const char*)buf, n);
         locker.unlock();
         emit dataReceived(_readBuffer);
@@ -654,4 +662,55 @@ void OpenSSLPQCSettings::appendTlsLog(const QString& msg)
     
     // Emit signal for QML to update
     emit tlsLogBufferChanged();
+}
+
+// ========== Raw & Decrypted Packet Hex Management ==========
+
+QString OpenSSLPQCSettings::bytesToHex(const uint8_t* data, int len)
+{
+    if (!data || len <= 0) {
+        return QString();
+    }
+    
+    // Limit to 5KB (max bytes to display)
+    const int maxBytes = 5120;  // 5KB
+    int displayLen = (len > maxBytes) ? maxBytes : len;
+    
+    // Convert bytes to hex string with space separation
+    QString hexString;
+    for (int i = 0; i < displayLen; ++i) {
+        if (i > 0) {
+            hexString += " ";
+        }
+        hexString += QString("%1").arg(data[i], 2, 16, QChar('0')).toUpper();
+    }
+    
+    // Append truncation indicator if data was truncated
+    if (len > maxBytes) {
+        hexString += QString(" ... (truncated, total %1 bytes)").arg(len);
+    }
+    
+    return hexString;
+}
+
+void OpenSSLPQCSettings::appendRawPacket(const uint8_t* data, int len)
+{
+    if (!data || len <= 0) {
+        _rawPacketHex = QString();
+        return;
+    }
+    
+    // Store latest encrypted packet as hex string
+    _rawPacketHex = bytesToHex(data, len);
+}
+
+void OpenSSLPQCSettings::appendDecryptedPacket(const uint8_t* data, int len)
+{
+    if (!data || len <= 0) {
+        _decryptedPacketHex = QString();
+        return;
+    }
+    
+    // Store latest decrypted packet as hex string
+    _decryptedPacketHex = bytesToHex(data, len);
 }

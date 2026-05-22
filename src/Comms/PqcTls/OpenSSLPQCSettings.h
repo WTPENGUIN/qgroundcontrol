@@ -58,6 +58,10 @@ public:
     // ========== TLS Log Buffer Property ==========
     Q_PROPERTY(QString  tlsLogBuffer           READ tlsLogBuffer                                           NOTIFY tlsLogBufferChanged)
 
+    // ========== Raw & Decrypted Packet Viewer Properties ==========
+    Q_PROPERTY(QString  rawPacketHex           READ rawPacketHex                                           NOTIFY rawPacketHexChanged)
+    Q_PROPERTY(QString  decryptedPacketHex     READ decryptedPacketHex                                     NOTIFY decryptedPacketHexChanged)
+
     // ========== Getter Methods ==========
     QString serverIpAddress() const { return _serverIpAddress; }
     QString serverPortNumber() const { return _serverPortNumber; }
@@ -71,6 +75,10 @@ public:
 
     // ========== TLS Log Buffer Getter ==========
     QString tlsLogBuffer() const { return _tlsLogBuffer; }
+
+    // ========== Raw & Decrypted Packet Hex Getters ==========
+    QString rawPacketHex() const { return _rawPacketHex; }
+    QString decryptedPacketHex() const { return _decryptedPacketHex; }
 
     // ========== Setter Methods ==========
     void setServerIpAddress(const QString& address);
@@ -128,6 +136,10 @@ signals:
     // ========== TLS Log Buffer Signal ==========
     void tlsLogBufferChanged();
 
+    // ========== Raw & Decrypted Packet Hex Signals ==========
+    void rawPacketHexChanged();
+    void decryptedPacketHexChanged();
+
 private:
     // Server Configuration
     QString _serverIpAddress = "192.168.0.203";
@@ -154,18 +166,25 @@ private:
      QSocketNotifier* _readNotifier = nullptr;
      QSocketNotifier* _writeNotifier = nullptr;
      
-     // ========== TLS Log Buffer ==========
-     QString _tlsLogBuffer;  // Latest 50 lines only
+      // ========== TLS Log Buffer ==========
+      QString _tlsLogBuffer;  // Latest 50 lines only
+      
+      // ========== Raw & Decrypted Packet Hex Buffers ==========
+      QString _rawPacketHex;        // Latest 1 encrypted packet (hex string)
+      QString _decryptedPacketHex;  // Latest 1 decrypted packet (hex string)
      
-     // ========== Worker Thread (NEW) ==========
+     // ========== Worker Thread ==========
      PQCTLSConnectionWorker* _connectionWorker = nullptr;
      bool _isConnecting = false;
 
-      // ========== Helper Methods ==========
-      QString getPrivateFolderPath() const;
-      void setupSocketNotifiers();
-      void cleanupSocketNotifiers();
-      void appendTlsLog(const QString& msg);  // (NEW) Append log to buffer with timestamp
+       // ========== Helper Methods ==========
+       QString getPrivateFolderPath() const;
+       void setupSocketNotifiers();
+       void cleanupSocketNotifiers();
+       void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
+       void appendRawPacket(const uint8_t* data, int len);        // Capture encrypted packet
+       void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
+       static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
 
     // ========== Private Slots ==========
 private slots:

@@ -125,32 +125,45 @@ error:
 
 int pqc_tls_get_fd(const pqc_tls_ctx_t* ctx) { return ctx ? ctx->sockfd : -1; }
 
-int pqc_tls_read(pqc_tls_ctx_t* ctx, uint8_t* dec_buf, int max_len, int* encrypted_len) {
-    if (!ctx || !ctx->ssl || !encrypted_len) return -1;
+int pqc_tls_read(pqc_tls_ctx_t* ctx, 
+                 uint8_t* dec_buf, int max_dec_len, 
+                 uint8_t* enc_buf, int max_enc_len, int* out_enc_len) {
     
-    *encrypted_len = 0;
+    if (!ctx || !ctx->ssl || !out_enc_len) return -1;
     
-    // TLS 레코드는 암호화되어 소켓에 있음. 읽기 전에 소켓 버퍼 크기 확인
-    // (MSG_PEEK으로 TLS 레코드 크기 추정)
+    *out_enc_len = 0;
+    
+    // 1. 헤더 5바이트를 Peek하여 TLS 레코드 전체 길이 추정
     uint8_t peek_buf[5];
     int peek_len = recv(ctx->sockfd, peek_buf, sizeof(peek_buf), MSG_PEEK | MSG_DONTWAIT);
-    if (peek_len > 0) {
+    
+    if (peek_len >= 5) {
         // TLS 레코드 헤더: [ContentType(1)] [Version(2)] [Length(2)]
-        // 길이는 빅엔디안으로 인코딩됨 (최대 16KB + 헤더 = 16389 바이트)
-        if (peek_len >= 5) {
-            int tls_record_len = (peek_buf[3] << 8) | peek_buf[4];
-            *encrypted_len = tls_record_len + 5;  // 헤더 + 페이로드
+        int tls_record_len = (peek_buf[3] << 8) | peek_buf[4];
+        int total_enc_len = tls_record_len + 5;  // 헤더 + 페이로드
+        
+        // 사용자가 제공한 버퍼 크기(max_enc_len)를 초과하지 않도록 방어 로직 추가
+        int copy_len = (total_enc_len > max_enc_len) ? max_enc_len : total_enc_len;
+        
+        // enc_buf가 유효하게 제공되었다면 암호화된 패킷 데이터를 추출하여 저장
+        if (enc_buf && copy_len > 0) {
+            int full_peek = recv(ctx->sockfd, enc_buf, copy_len, MSG_PEEK | MSG_DONTWAIT);
+            if (full_peek > 0) {
+                *out_enc_len = full_peek; // 실제로 읽어온 암호화 데이터 크기 기록
+            }
+        } else {
+            // 버퍼가 제공되지 않은 경우, 길이 정보만 갱신
+            *out_enc_len = total_enc_len;
         }
     }
     
-    // SSL_read()로 복호화된 데이터를 읽음
-    int r = SSL_read(ctx->ssl, dec_buf, max_len);
+    // 2. SSL_read()로 복호화된 데이터를 읽음 (여기서 소켓의 원본 암호화 데이터가 소모됨)
+    int r = SSL_read(ctx->ssl, dec_buf, max_dec_len);
+    
     if (r <= 0) {
         int err = SSL_get_error(ctx->ssl, r);
         if (err == SSL_ERROR_WANT_READ) {
-            char logbuf[128];
-            snprintf(logbuf, sizeof(logbuf), "SSL_read: Waiting for data (encrypted: %d bytes)", *encrypted_len);
-            log_msg(ctx, logbuf);
+            // 논블로킹 상태에서의 정상적인 대기
             return 0;
         } else if (err == SSL_ERROR_WANT_WRITE) {
             log_msg(ctx, "SSL_read: Need to send pending data first");
@@ -165,8 +178,46 @@ int pqc_tls_read(pqc_tls_ctx_t* ctx, uint8_t* dec_buf, int max_len, int* encrypt
         }
     }
     
-    return r;
+    return r; // 복호화된 평문 데이터의 길이 반환
 }
+
+// int pqc_tls_read(pqc_tls_ctx_t* ctx, uint8_t* dec_buf, int max_len, int* encrypted_len) {
+//     if (!ctx || !ctx->ssl || !encrypted_len) return -1;
+    
+//     *encrypted_len = 0;
+    
+//     // TLS 레코드는 암호화되어 소켓에 있음. 읽기 전에 소켓 버퍼 크기 확인
+//     // (MSG_PEEK으로 TLS 레코드 크기 추정)
+//     uint8_t peek_buf[5];
+//     int peek_len = recv(ctx->sockfd, peek_buf, sizeof(peek_buf), MSG_PEEK | MSG_DONTWAIT);
+//     if (peek_len > 0) {
+//         // TLS 레코드 헤더: [ContentType(1)] [Version(2)] [Length(2)]
+//         // 길이는 빅엔디안으로 인코딩됨 (최대 16KB + 헤더 = 16389 바이트)
+//         if (peek_len >= 5) {
+//             int tls_record_len = (peek_buf[3] << 8) | peek_buf[4];
+//             *encrypted_len = tls_record_len + 5;  // 헤더 + 페이로드
+//         }
+//     }
+    
+//     // SSL_read()로 복호화된 데이터를 읽음
+//     int r = SSL_read(ctx->ssl, dec_buf, max_len);
+//     if (r <= 0) {
+//         int err = SSL_get_error(ctx->ssl, r);
+//         if (err == SSL_ERROR_WANT_READ) {
+//             return 0;
+//         } else if (err == SSL_ERROR_WANT_WRITE) {
+//             return 0;
+//         } else {
+//             char errbuf[256];
+//             unsigned long ssl_err = ERR_get_error();
+//             snprintf(errbuf, sizeof(errbuf), "SSL_read: Connection error: %s", ERR_error_string(ssl_err, NULL));
+//             log_msg(ctx, errbuf);
+//             return -1;
+//         }
+//     }
+    
+//     return r;
+// }
 
 int pqc_tls_write(pqc_tls_ctx_t* ctx, const uint8_t* buf, int len) {
     if (!ctx || !ctx->ssl) return -1;

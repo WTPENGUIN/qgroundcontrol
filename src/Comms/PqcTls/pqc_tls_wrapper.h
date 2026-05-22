@@ -22,9 +22,16 @@ pqc_tls_ctx_t* pqc_tls_connect(const char* ip, int port,
 
 int pqc_tls_get_fd(const pqc_tls_ctx_t* ctx);
 
-// 논블로킹 읽기: dec_buf에 복호화 데이터 반환, encrypted_len에 TLS 레코드 암호화 바이트 수 반환
+// dec_buf: 복호화된 평문 데이터가 저장될 버퍼
+// max_dec_len: dec_buf의 최대 크기
+// enc_buf: 암호화된 TLS 레코드 원본이 저장될 버퍼 (NULL 허용)
+// max_enc_len: enc_buf의 최대 크기
+// out_enc_len: 실제로 enc_buf에 복사된 암호화 데이터의 길이 반환
 // 반환값: 복호화된 바이트 수 (0=데이터 없음, -1=에러)
-int pqc_tls_read(pqc_tls_ctx_t* ctx, uint8_t* dec_buf, int max_len, int* encrypted_len);
+int pqc_tls_read(pqc_tls_ctx_t* ctx, 
+                 uint8_t* dec_buf, int max_dec_len, 
+                 uint8_t* enc_buf, int max_enc_len, int* out_enc_len);
+
 int pqc_tls_write(pqc_tls_ctx_t* ctx, const uint8_t* buf, int len);
 
 void pqc_tls_close(pqc_tls_ctx_t* ctx);

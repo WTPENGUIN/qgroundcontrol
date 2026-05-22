@@ -71,6 +71,10 @@ Item {
         // SSL 로그 버퍼 로드
         sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
         
+        // Raw & Decrypted Packet Hex 로드
+        rawPacketViewerContent = OpenSSLPQCSettings.rawPacketHex
+        decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
+        
         // 파일 선택 여부 판단
         caBundleSelected = (OpenSSLPQCSettings.caBundleFilePath !== "")
         clientCertSelected = (OpenSSLPQCSettings.clientCertFilePath !== "")
@@ -89,6 +93,14 @@ Item {
         
         function onTlsLogBufferChanged() {
             sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
+        }
+        
+        function onRawPacketHexChanged() {
+            rawPacketViewerContent = OpenSSLPQCSettings.rawPacketHex
+        }
+        
+        function onDecryptedPacketHexChanged() {
+            decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
         }
     }
 
