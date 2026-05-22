@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "OpenSSLPQCSettings.h"
+#include "PQCTLSConnectionWorker.h"
 #include "QGCLoggingCategory.h"
 #include "pqc_tls_wrapper.h"
 
@@ -117,13 +118,17 @@ void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
 void OpenSSLPQCSettings::connectToServer()
 {
     qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== SERVER CONNECT REQUEST ==========";
+    qCDebug(OpenSSLPQCLog) << "========== SERVER CONNECT REQUEST (ASYNC) ==========";
     qCDebug(OpenSSLPQCLog) << "  IP Address      :" << _serverIpAddress;
     qCDebug(OpenSSLPQCLog) << "  Port            :" << _serverPortNumber;
-    qCDebug(OpenSSLPQCLog) << "  CA Bundle       :" << _caBundleFilePath;
-    qCDebug(OpenSSLPQCLog) << "  Client Cert     :" << _clientCertFilePath;
-    qCDebug(OpenSSLPQCLog) << "==========================================";
+    qCDebug(OpenSSLPQCLog) << "====================================================";
     qCDebug(OpenSSLPQCLog) << "";
+    
+    // Prevent duplicate connections
+    if (_serverConnected || _isConnecting) {
+        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Already connected or connecting";
+        return;
+    }
     
     // Input validation
     if (_serverIpAddress.isEmpty()) {
@@ -159,45 +164,57 @@ void OpenSSLPQCSettings::connectToServer()
         return;
     }
     
-    // Initialize PQC TLS library
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Initializing PQC TLS library...";
-    pqc_tls_init_library();
+    // Update status: starting connection attempt
+    setServerConnected(false);
+    _isConnecting = true;
+    emit connectionStatusChanged("connecting");
     
-    // Mutex lock for context management
-    QMutexLocker locker(&_contextMutex);
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Starting async connection...";
     
-    // Clean up existing connection if any
-    if (_pqcCtx) {
-        qCWarning(OpenSSLPQCLog) << "[PQC-Connect] Warning: Existing connection found, closing it";
-        pqc_tls_close(_pqcCtx);
-        _pqcCtx = nullptr;
+    // Create worker thread if not exists
+    if (!_connectionWorker) {
+        _connectionWorker = new PQCTLSConnectionWorker(this);
+        
+        // Connect worker finished signal
+        connect(_connectionWorker, static_cast<void(PQCTLSConnectionWorker::*)(bool, void*)>(&PQCTLSConnectionWorker::finished),
+                this, [this](bool success, void* ctx) {
+            if (success && ctx) {
+                qCDebug(OpenSSLPQCLog) << "[PQC-Main] ✅ Connection established!";
+                _pqcCtx = static_cast<pqc_tls_ctx_t*>(ctx);
+                setupSocketNotifiers();
+                setServerConnected(true);
+                emit connectionStatusChanged("connected");
+            } else {
+                qCCritical(OpenSSLPQCLog) << "[PQC-Main] ❌ Connection failed";
+                setServerConnected(false);
+                emit connectionStatusChanged("error");
+                emit connectionError("Failed to establish PQC TLS connection");
+            }
+            _isConnecting = false;
+        });
+        
+        connect(_connectionWorker, &QThread::finished,
+                _connectionWorker, &QObject::deleteLater);
+        
+        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Worker thread created";
     }
     
-    // Establish PQC TLS connection
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connecting to" << _serverIpAddress << ":" << port;
+    // Set worker parameters
+    _connectionWorker->_ip = _serverIpAddress;
+    _connectionWorker->_port = port;
+    _connectionWorker->_clientCert = _clientCertFilePath;
+    _connectionWorker->_caBundlePath = _caBundleFilePath;
     
-    _pqcCtx = pqc_tls_connect(
-        _serverIpAddress.toUtf8().constData(),
-        port,
-        _clientCertFilePath.toUtf8().constData(),
-        _caBundleFilePath.toUtf8().constData(),
-        logCallback,
-        this
-    );
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connection parameters set";
     
-    if (!_pqcCtx) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: PQC TLS connection failed";
-        setServerConnected(false);
-        return;
+    // Start worker thread
+    if (!_connectionWorker->isRunning()) {
+        _connectionWorker->start();
+        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Worker thread started";
     }
     
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connection established successfully";
-    
-    // Setup socket notifiers for event loop integration
-    setupSocketNotifiers();
-    
-    // Update connection status
-    setServerConnected(true);
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] ⬅️  Main thread returns immediately (UI responsive!)";
+    qCDebug(OpenSSLPQCLog) << "";
 }
 
 void OpenSSLPQCSettings::disconnectFromServer()

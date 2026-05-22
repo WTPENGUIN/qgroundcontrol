@@ -16,6 +16,7 @@
 #include <QtCore/QMutex>
 #include <QtCore/QSocketNotifier>
 #include <QtCore/QByteArray>
+#include <QtCore/QThread>
 #if defined(Q_OS_ANDROID)
 #include <QtCore/QJniObject>
 #include "src/Android/AndroidInterface.h"
@@ -25,6 +26,8 @@
 extern "C" {
 typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
 }
+
+class PQCTLSConnectionWorker;
 
 Q_DECLARE_LOGGING_CATEGORY(OpenSSLPQCLog)
 
@@ -109,6 +112,9 @@ signals:
     
     // ========== PQC TLS Logging Signal ==========
     void tlsLogMessage(const QString& logMsg);
+    
+    // ========== Connection Status Signal (NEW) ==========
+    void connectionStatusChanged(const QString& status);
 
 private:
     // Server Configuration
@@ -132,9 +138,13 @@ private:
     QByteArray _readBuffer;
     QByteArray _writeBuffer;
     
-    // ========== Socket Notifiers ==========
+     // ========== Socket Notifiers ==========
     QSocketNotifier* _readNotifier = nullptr;
     QSocketNotifier* _writeNotifier = nullptr;
+    
+    // ========== Worker Thread (NEW) ==========
+    PQCTLSConnectionWorker* _connectionWorker = nullptr;
+    bool _isConnecting = false;
 
     // ========== Helper Methods ==========
     QString getPrivateFolderPath() const;
