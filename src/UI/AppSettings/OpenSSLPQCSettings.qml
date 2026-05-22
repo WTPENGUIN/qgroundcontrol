@@ -68,6 +68,9 @@ Item {
         isConnected = OpenSSLPQCSettings.serverConnected
         isRoutingConnected = OpenSSLPQCSettings.routingConnected
         
+        // SSL 로그 버퍼 로드
+        sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
+        
         // 파일 선택 여부 판단
         caBundleSelected = (OpenSSLPQCSettings.caBundleFilePath !== "")
         clientCertSelected = (OpenSSLPQCSettings.clientCertFilePath !== "")
@@ -82,6 +85,10 @@ Item {
     
         function onRoutingConnectedChanged(connected) {
             isRoutingConnected = connected
+        }
+        
+        function onTlsLogBufferChanged() {
+            sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
         }
     }
 

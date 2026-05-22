@@ -55,6 +55,9 @@ public:
     Q_PROPERTY(QString  caBundleFilePath       READ caBundleFilePath       WRITE setCaBundleFilePath       NOTIFY caBundleFilePathChanged)
     Q_PROPERTY(QString  clientCertFilePath     READ clientCertFilePath     WRITE setClientCertFilePath     NOTIFY clientCertFilePathChanged)
 
+    // ========== TLS Log Buffer Property ==========
+    Q_PROPERTY(QString  tlsLogBuffer           READ tlsLogBuffer                                           NOTIFY tlsLogBufferChanged)
+
     // ========== Getter Methods ==========
     QString serverIpAddress() const { return _serverIpAddress; }
     QString serverPortNumber() const { return _serverPortNumber; }
@@ -65,6 +68,9 @@ public:
     
     QString caBundleFilePath() const { return _caBundleFilePath; }
     QString clientCertFilePath() const { return _clientCertFilePath; }
+
+    // ========== TLS Log Buffer Getter ==========
+    QString tlsLogBuffer() const { return _tlsLogBuffer; }
 
     // ========== Setter Methods ==========
     void setServerIpAddress(const QString& address);
@@ -94,6 +100,9 @@ public:
     Q_INVOKABLE QByteArray readData(int maxSize = 4096);
     Q_INVOKABLE int writeData(const QByteArray& data);
 
+    // ========== TLS Logging Callback ==========
+    static void logCallback(void* userData, const char* msg);
+
 signals:
     void serverIpAddressChanged(const QString& address);
     void serverPortNumberChanged(const QString& port);
@@ -113,8 +122,11 @@ signals:
     // ========== PQC TLS Logging Signal ==========
     void tlsLogMessage(const QString& logMsg);
     
-    // ========== Connection Status Signal (NEW) ==========
+    // ========== Connection Status Signal ==========
     void connectionStatusChanged(const QString& status);
+
+    // ========== TLS Log Buffer Signal ==========
+    void tlsLogBufferChanged();
 
 private:
     // Server Configuration
@@ -139,18 +151,21 @@ private:
     QByteArray _writeBuffer;
     
      // ========== Socket Notifiers ==========
-    QSocketNotifier* _readNotifier = nullptr;
-    QSocketNotifier* _writeNotifier = nullptr;
-    
-    // ========== Worker Thread (NEW) ==========
-    PQCTLSConnectionWorker* _connectionWorker = nullptr;
-    bool _isConnecting = false;
+     QSocketNotifier* _readNotifier = nullptr;
+     QSocketNotifier* _writeNotifier = nullptr;
+     
+     // ========== TLS Log Buffer ==========
+     QString _tlsLogBuffer;  // Latest 50 lines only
+     
+     // ========== Worker Thread (NEW) ==========
+     PQCTLSConnectionWorker* _connectionWorker = nullptr;
+     bool _isConnecting = false;
 
-    // ========== Helper Methods ==========
-    QString getPrivateFolderPath() const;
-    void setupSocketNotifiers();
-    void cleanupSocketNotifiers();
-    static void logCallback(void* userData, const char* msg);
+      // ========== Helper Methods ==========
+      QString getPrivateFolderPath() const;
+      void setupSocketNotifiers();
+      void cleanupSocketNotifiers();
+      void appendTlsLog(const QString& msg);  // (NEW) Append log to buffer with timestamp
 
     // ========== Private Slots ==========
 private slots:

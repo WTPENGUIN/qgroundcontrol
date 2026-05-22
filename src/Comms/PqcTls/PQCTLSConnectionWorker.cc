@@ -66,8 +66,8 @@ void PQCTLSConnectionWorker::run()
         _port,
         _clientCert.toUtf8().constData(),
         _caBundlePath.toUtf8().constData(),
-        nullptr,  // logCallback will be set in main thread
-        nullptr   // userData
+        &OpenSSLPQCSettings::logCallback,  // Capture handshake logs
+        _parent  // userData (this pointer)
     );
     
     qCDebug(OpenSSLPQCLog) << "";

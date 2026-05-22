@@ -103,13 +103,25 @@ void OpenSSLPQCSettings::setClientCertFilePath(const QString& path)
 
 void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
 {
+    if (!msg) return;
+    
+    QString msgStr = QString::fromUtf8(msg);
+    
+    // 1. Debug log output
+    qCDebug(OpenSSLPQCLog) << "[PQC-C-Library]" << msgStr;
+    
+    // 2. Filter out read/write logs
+    if (msgStr.contains("Sent bytes:", Qt::CaseInsensitive) ||
+        msgStr.contains("Received bytes:", Qt::CaseInsensitive) ||
+        msgStr.contains("Write:", Qt::CaseInsensitive) ||
+        msgStr.contains("Read:", Qt::CaseInsensitive)) {
+        return;  // Filtered out
+    }
+    
+    // 3. Append to TLS log buffer
     OpenSSLPQCSettings* self = static_cast<OpenSSLPQCSettings*>(userData);
-    if (self && msg) {
-        // 1. Debug log output (existing)
-        qCDebug(OpenSSLPQCLog) << "[PQC-C-Library]" << msg;
-        
-        // 2. Emit signal for QML integration (new)
-        emit self->tlsLogMessage(QString::fromUtf8(msg));
+    if (self) {
+        self->appendTlsLog(msgStr);
     }
 }
 
@@ -619,4 +631,27 @@ void OpenSSLPQCSettings::onSocketReadyWrite()
             _writeNotifier->setEnabled(false);
         }
     }
+}
+
+// ========== TLS Log Buffer Management ==========
+
+void OpenSSLPQCSettings::appendTlsLog(const QString& msg)
+{
+    // Generate timestamp (HH:MM:SS format)
+    QTime currentTime = QTime::currentTime();
+    QString timestamp = currentTime.toString("hh:mm:ss");
+    QString logLine = QString("[%1] %2").arg(timestamp, msg);
+    
+    // Append to log buffer
+    _tlsLogBuffer += logLine + "\n";
+    
+    // Limit to 50 lines (keep latest lines)
+    QStringList lines = _tlsLogBuffer.split('\n', Qt::SkipEmptyParts);
+    if (lines.size() > 50) {
+        lines = lines.mid(lines.size() - 50);  // Keep latest 50 lines
+        _tlsLogBuffer = lines.join('\n') + "\n";
+    }
+    
+    // Emit signal for QML to update
+    emit tlsLogBufferChanged();
 }
