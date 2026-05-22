@@ -13,10 +13,18 @@
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QFile>
 #include <QtCore/QStandardPaths>
+#include <QtCore/QMutex>
+#include <QtCore/QSocketNotifier>
+#include <QtCore/QByteArray>
 #if defined(Q_OS_ANDROID)
 #include <QtCore/QJniObject>
 #include "src/Android/AndroidInterface.h"
 #endif
+
+// Forward declaration
+extern "C" {
+typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
+}
 
 Q_DECLARE_LOGGING_CATEGORY(OpenSSLPQCLog)
 
@@ -79,6 +87,10 @@ public:
     // ========== File Import Methods (Android) ==========
     Q_INVOKABLE void callOpenPQCFileImportDialog(const QString& targetFilename);
 
+    // ========== PQC TLS Data Read/Write Methods ==========
+    Q_INVOKABLE QByteArray readData(int maxSize = 4096);
+    Q_INVOKABLE int writeData(const QByteArray& data);
+
 signals:
     void serverIpAddressChanged(const QString& address);
     void serverPortNumberChanged(const QString& port);
@@ -89,6 +101,14 @@ signals:
     
     void caBundleFilePathChanged(const QString& path);
     void clientCertFilePathChanged(const QString& path);
+    
+    // ========== PQC TLS Data Transfer Signals ==========
+    void dataReceived(const QByteArray& data);
+    void dataSent(int bytes);
+    void connectionError(const QString& errorMsg);
+    
+    // ========== PQC TLS Logging Signal ==========
+    void tlsLogMessage(const QString& logMsg);
 
 private:
     // Server Configuration
@@ -104,9 +124,30 @@ private:
     QString _caBundleFilePath = "";
     QString _clientCertFilePath = "";
 
+    // ========== PQC TLS Context ==========
+    pqc_tls_ctx_t* _pqcCtx = nullptr;
+    QMutex _contextMutex;
+    
+    // ========== Read/Write Buffers ==========
+    QByteArray _readBuffer;
+    QByteArray _writeBuffer;
+    
+    // ========== Socket Notifiers ==========
+    QSocketNotifier* _readNotifier = nullptr;
+    QSocketNotifier* _writeNotifier = nullptr;
+
     // ========== Helper Methods ==========
     QString getPrivateFolderPath() const;
+    void setupSocketNotifiers();
+    void cleanupSocketNotifiers();
+    static void logCallback(void* userData, const char* msg);
+
+    // ========== Private Slots ==========
+private slots:
+    void onSocketReadyRead();
+    void onSocketReadyWrite();
 
     // ========== JNI Callback Registration ==========
+private:
     void registerJNICallback();
 };

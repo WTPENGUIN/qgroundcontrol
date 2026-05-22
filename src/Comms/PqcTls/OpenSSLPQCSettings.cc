@@ -98,6 +98,20 @@ void OpenSSLPQCSettings::setClientCertFilePath(const QString& path)
     }
 }
 
+// ========== PQC TLS Logging Callback ==========
+
+void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
+{
+    OpenSSLPQCSettings* self = static_cast<OpenSSLPQCSettings*>(userData);
+    if (self && msg) {
+        // 1. Debug log output (existing)
+        qCDebug(OpenSSLPQCLog) << "[PQC-C-Library]" << msg;
+        
+        // 2. Emit signal for QML integration (new)
+        emit self->tlsLogMessage(QString::fromUtf8(msg));
+    }
+}
+
 // ========== Server Connection Methods ==========
 
 void OpenSSLPQCSettings::connectToServer()
@@ -111,7 +125,78 @@ void OpenSSLPQCSettings::connectToServer()
     qCDebug(OpenSSLPQCLog) << "==========================================";
     qCDebug(OpenSSLPQCLog) << "";
     
-    // TODO: Implement actual server connection logic
+    // Input validation
+    if (_serverIpAddress.isEmpty()) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Server IP address is empty";
+        setServerConnected(false);
+        return;
+    }
+    
+    if (_serverPortNumber.isEmpty()) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Server port number is empty";
+        setServerConnected(false);
+        return;
+    }
+    
+    if (_caBundleFilePath.isEmpty()) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: CA bundle file path is empty";
+        setServerConnected(false);
+        return;
+    }
+    
+    if (_clientCertFilePath.isEmpty()) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Client certificate file path is empty";
+        setServerConnected(false);
+        return;
+    }
+    
+    // Port number conversion
+    bool portOk = false;
+    int port = _serverPortNumber.toInt(&portOk);
+    if (!portOk || port <= 0 || port > 65535) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Invalid port number" << _serverPortNumber;
+        setServerConnected(false);
+        return;
+    }
+    
+    // Initialize PQC TLS library
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Initializing PQC TLS library...";
+    pqc_tls_init_library();
+    
+    // Mutex lock for context management
+    QMutexLocker locker(&_contextMutex);
+    
+    // Clean up existing connection if any
+    if (_pqcCtx) {
+        qCWarning(OpenSSLPQCLog) << "[PQC-Connect] Warning: Existing connection found, closing it";
+        pqc_tls_close(_pqcCtx);
+        _pqcCtx = nullptr;
+    }
+    
+    // Establish PQC TLS connection
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connecting to" << _serverIpAddress << ":" << port;
+    
+    _pqcCtx = pqc_tls_connect(
+        _serverIpAddress.toUtf8().constData(),
+        port,
+        _clientCertFilePath.toUtf8().constData(),
+        _caBundleFilePath.toUtf8().constData(),
+        logCallback,
+        this
+    );
+    
+    if (!_pqcCtx) {
+        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: PQC TLS connection failed";
+        setServerConnected(false);
+        return;
+    }
+    
+    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connection established successfully";
+    
+    // Setup socket notifiers for event loop integration
+    setupSocketNotifiers();
+    
+    // Update connection status
     setServerConnected(true);
 }
 
@@ -122,7 +207,27 @@ void OpenSSLPQCSettings::disconnectFromServer()
     qCDebug(OpenSSLPQCLog) << "============================================";
     qCDebug(OpenSSLPQCLog) << "";
     
-    // TODO: Implement actual server disconnection logic
+    // Clean up socket notifiers first
+    cleanupSocketNotifiers();
+    
+    // Mutex lock for safe context cleanup
+    {
+        QMutexLocker locker(&_contextMutex);
+        
+        if (_pqcCtx) {
+            qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Closing PQC TLS connection...";
+            pqc_tls_close(_pqcCtx);
+            _pqcCtx = nullptr;
+        }
+    }
+    
+    qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Connection closed";
+    
+    // Clear buffers
+    _readBuffer.clear();
+    _writeBuffer.clear();
+    
+    // Update connection status
     setServerConnected(false);
 }
 
@@ -262,4 +367,239 @@ QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, co
                            << "Size:" << bytesWritten << "bytes";
     
     return targetFilePath;  // 절대 경로 반환
+}
+
+// ========== PQC TLS Socket Notifiers ==========
+
+void OpenSSLPQCSettings::setupSocketNotifiers()
+{
+    QMutexLocker locker(&_contextMutex);
+    
+    if (!_pqcCtx) {
+        qCWarning(OpenSSLPQCLog) << "[Notifier-Setup] PQC context is null";
+        return;
+    }
+    
+    int fd = pqc_tls_get_fd(_pqcCtx);
+    if (fd < 0) {
+        qCWarning(OpenSSLPQCLog) << "[Notifier-Setup] Invalid file descriptor";
+        return;
+    }
+    
+    // Clean up existing notifiers
+    cleanupSocketNotifiers();
+    
+    // Create read notifier
+    _readNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+    connect(_readNotifier, &QSocketNotifier::activated,
+            this, &OpenSSLPQCSettings::onSocketReadyRead);
+    
+    // Create write notifier (disabled initially)
+    _writeNotifier = new QSocketNotifier(fd, QSocketNotifier::Write, this);
+    connect(_writeNotifier, &QSocketNotifier::activated,
+            this, &OpenSSLPQCSettings::onSocketReadyWrite);
+    _writeNotifier->setEnabled(false);
+    
+    qCDebug(OpenSSLPQCLog) << "[Notifier-Setup] Socket notifiers setup complete (fd:" << fd << ")";
+}
+
+void OpenSSLPQCSettings::cleanupSocketNotifiers()
+{
+    if (_readNotifier) {
+        disconnect(_readNotifier, nullptr, this, nullptr);
+        delete _readNotifier;
+        _readNotifier = nullptr;
+    }
+    if (_writeNotifier) {
+        disconnect(_writeNotifier, nullptr, this, nullptr);
+        delete _writeNotifier;
+        _writeNotifier = nullptr;
+    }
+    qCDebug(OpenSSLPQCLog) << "[Notifier-Cleanup] Socket notifiers cleaned up";
+}
+
+// ========== PQC TLS Data Read/Write ==========
+
+QByteArray OpenSSLPQCSettings::readData(int maxSize)
+{
+    QMutexLocker locker(&_contextMutex);
+    
+    if (!_pqcCtx) {
+        qCDebug(OpenSSLPQCLog) << "[Read] Not connected";
+        return QByteArray();
+    }
+    
+    uint8_t buf[maxSize];
+    int encrypted_len = 0;
+    
+    // Read all available data from socket
+    while (true) {
+        int n = pqc_tls_read(_pqcCtx, buf, maxSize, &encrypted_len);
+        
+        if (n > 0) {
+            _readBuffer.append((const char*)buf, n);
+            qCDebug(OpenSSLPQCLog) << "[Read] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
+        } else if (n == 0) {
+            // No data available
+            break;
+        } else {
+            // Error occurred
+            qCCritical(OpenSSLPQCLog) << "[Read] Read error, disconnecting";
+            locker.unlock();
+            disconnectFromServer();
+            break;
+        }
+    }
+    
+    // Return accumulated data
+    QByteArray result = _readBuffer;
+    _readBuffer.clear();  // Auto-clear buffer
+    
+    if (!result.isEmpty()) {
+        qCDebug(OpenSSLPQCLog) << "[Read] Returning" << result.size() << "bytes";
+    }
+    
+    return result;
+}
+
+int OpenSSLPQCSettings::writeData(const QByteArray& data)
+{
+    if (data.isEmpty()) {
+        return 0;
+    }
+    
+    QMutexLocker locker(&_contextMutex);
+    
+    if (!_pqcCtx) {
+        qCWarning(OpenSSLPQCLog) << "[Write] Not connected, discarding" << data.size() << "bytes";
+        return -1;
+    }
+    
+    // Add data to write buffer
+    _writeBuffer.append(data);
+    qCDebug(OpenSSLPQCLog) << "[Write] Added" << data.size() << "bytes to buffer, total:" << _writeBuffer.size() << "bytes";
+    
+    // Attempt to send data immediately (loop)
+    int totalSent = 0;
+    while (_writeBuffer.size() > 0) {
+        int n = pqc_tls_write(_pqcCtx, 
+                             (const uint8_t*)_writeBuffer.data(),
+                             _writeBuffer.size());
+        
+        if (n > 0) {
+            qCDebug(OpenSSLPQCLog) << "[Write] Sent" << n << "bytes (requested:" << _writeBuffer.size() << ")";
+            _writeBuffer.remove(0, n);
+            totalSent += n;
+        } else if (n == 0) {
+            // Buffer full or would block - enable write notifier for event loop
+            qCDebug(OpenSSLPQCLog) << "[Write] Write would block, enabling notifier for" << _writeBuffer.size() << "remaining bytes";
+            if (_writeNotifier) {
+                _writeNotifier->setEnabled(true);
+            }
+            break;
+        } else {
+            // Error occurred
+            qCCritical(OpenSSLPQCLog) << "[Write] Write error, disconnecting";
+            locker.unlock();
+            disconnectFromServer();
+            return -1;
+        }
+    }
+    
+    // Return number of bytes still pending in buffer
+    int pendingBytes = _writeBuffer.size();
+    qCDebug(OpenSSLPQCLog) << "[Write] Write complete. Sent:" << totalSent << "bytes, Pending:" << pendingBytes << "bytes";
+    
+    return pendingBytes;
+}
+
+// ========== PQC TLS Socket Event Handlers ==========
+
+void OpenSSLPQCSettings::onSocketReadyRead()
+{
+    uint8_t buf[4096];
+    int encrypted_len = 0;
+    
+    QMutexLocker locker(&_contextMutex);
+    
+    if (!_pqcCtx) {
+        qCWarning(OpenSSLPQCLog) << "[ReadEvent] PQC context is null";
+        return;
+    }
+    
+    int n = pqc_tls_read(_pqcCtx, buf, sizeof(buf), &encrypted_len);
+    
+    if (n > 0) {
+        qCDebug(OpenSSLPQCLog) << "[ReadEvent] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
+        _readBuffer.append((const char*)buf, n);
+        locker.unlock();
+        emit dataReceived(_readBuffer);
+        
+    } else if (n == 0) {
+        // No data available (normal)
+        qCDebug(OpenSSLPQCLog) << "[ReadEvent] No data available (waiting...)";
+        
+    } else {
+        // Error occurred
+        qCCritical(OpenSSLPQCLog) << "[ReadEvent] Read error, disconnecting";
+        locker.unlock();
+        disconnectFromServer();
+    }
+}
+
+void OpenSSLPQCSettings::onSocketReadyWrite()
+{
+    QMutexLocker locker(&_contextMutex);
+    
+    if (!_pqcCtx) {
+        if (_writeNotifier) {
+            _writeNotifier->setEnabled(false);
+        }
+        return;
+    }
+    
+    if (_writeBuffer.isEmpty()) {
+        if (_writeNotifier) {
+            _writeNotifier->setEnabled(false);
+        }
+        return;
+    }
+    
+    // Attempt to send all remaining data (loop)
+    int totalSent = 0;
+    while (_writeBuffer.size() > 0) {
+        int n = pqc_tls_write(_pqcCtx, 
+                             (const uint8_t*)_writeBuffer.data(),
+                             _writeBuffer.size());
+        
+        if (n > 0) {
+            qCDebug(OpenSSLPQCLog) << "[WriteEvent] Sent" << n << "bytes";
+            _writeBuffer.remove(0, n);
+            totalSent += n;
+            
+        } else if (n == 0) {
+            // Buffer full or would block
+            qCDebug(OpenSSLPQCLog) << "[WriteEvent] Write would block, retrying later";
+            break;
+            
+        } else {
+            // Error occurred
+            qCCritical(OpenSSLPQCLog) << "[WriteEvent] Write error, disconnecting";
+            locker.unlock();
+            disconnectFromServer();
+            return;
+        }
+    }
+    
+    // If all data sent, emit signal and disable notifier
+    if (_writeBuffer.isEmpty()) {
+        if (totalSent > 0) {
+            locker.unlock();
+            emit dataSent(totalSent);
+            locker.relock();
+        }
+        if (_writeNotifier) {
+            _writeNotifier->setEnabled(false);
+        }
+    }
 }
