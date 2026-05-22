@@ -27,5 +27,13 @@ namespace AndroidInterface
     QString getSDCardPath();
     void setKeepScreenOn(bool on);
 
+    /**
+     * Opens file import dialog for PQC certificate files
+     * @param destPath              Destination directory path
+     * @param filename              Fixed filename for copied file
+     * @param allowedExtensions     Allowed file extensions (e.g., ".crt", ".pem", ".cer")
+     */
+    void openPQCFileImportDialog(const QString& destPath, const QString& filename, const QStringList& allowedExtensions);
+
     constexpr const char *kJniQGCActivityClassName = "org/mavlink/qgroundcontrol/QGCActivity";
 };

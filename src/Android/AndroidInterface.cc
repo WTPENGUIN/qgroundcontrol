@@ -138,6 +138,65 @@ QString getSDCardPath()
     return result.toString();
 }
 
+void openPQCFileImportDialog(const QString& destPath, const QString& filename, const QStringList& allowedExtensions)
+{
+    qCDebug(AndroidInterfaceLog) << "openPQCFileImportDialog called"
+                                 << "destPath:" << destPath
+                                 << "filename:" << filename
+                                 << "extensions count:" << allowedExtensions.size();
+    
+    // JNI 환경 변수 저장
+    QJniEnvironment env;
+    if (!env.isValid()) {
+        qCWarning(AndroidInterfaceLog) << "Invalid JNI Environment";
+        return;
+    }
+    
+    // Java String 객체 생성
+    QJniObject javaDestPath = QJniObject::fromString(destPath);
+    QJniObject javaFilename = QJniObject::fromString(filename);
+    
+    // String class 찾기
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (!stringClass) {
+        qCWarning(AndroidInterfaceLog) << "Failed to find String class";
+        return;
+    }
+    
+    // String[] 배열 생성
+    jsize arraySize = static_cast<jsize>(allowedExtensions.size());
+    jobjectArray javaExtArray = env->NewObjectArray(arraySize, stringClass, nullptr);
+    if (!javaExtArray) {
+        qCWarning(AndroidInterfaceLog) << "Failed to create String array";
+        env->DeleteLocalRef(stringClass);
+        return;
+    }
+    
+    // 배열에 요소 추가
+    for (jsize i = 0; i < arraySize; ++i) {
+        QJniObject ext = QJniObject::fromString(allowedExtensions.at(i));
+        env->SetObjectArrayElement(javaExtArray, i, ext.object());
+    }
+    
+    // 메모리 정리
+    env->DeleteLocalRef(stringClass);
+    
+    // Java 메서드 호출
+    QJniObject::callStaticMethod<void>(
+        kJniQGCActivityClassName,
+        "openFileImportDialog",
+        "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)V",
+        javaDestPath.object(),
+        javaFilename.object(),
+        javaExtArray
+    );
+    
+    // 배열 메모리 정리
+    env->DeleteLocalRef(javaExtArray);
+    
+    qCDebug(AndroidInterfaceLog) << "openPQCFileImportDialog completed";
+}
+
 void setKeepScreenOn(bool on)
 {
     Q_UNUSED(on);

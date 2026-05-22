@@ -63,6 +63,13 @@ ListModel {
     }
 
     ListElement {
+        name: qsTr("OpenSSL PQC")
+        url: "qrc:/qml/QGroundControl/AppSettings/OpenSSLPQCSettings.qml"
+        iconUrl: "qrc:/InstrumentValueIcons/usb.svg"
+        pageVisible: function() { return true }
+    }
+
+    ListElement {
         name: qsTr("Maps")
         url: "qrc:/qml/QGroundControl/AppSettings/MapSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/globe.svg"

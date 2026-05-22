@@ -3,9 +3,12 @@ package org.mavlink.qgroundcontrol;
 import java.io.File;
 import java.util.List;
 import java.lang.reflect.Method;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -13,6 +16,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.net.wifi.WifiManager;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.WindowManager;
@@ -33,6 +37,11 @@ public class QGCActivity extends QtActivity {
 
     private PowerManager.WakeLock m_wakeLock;
     private WifiManager.MulticastLock m_wifiMulticastLock;
+
+    private static final int IMPORT_FILE_REQUEST_CODE = 42;
+    private static String s_importDestPath = "";
+    private static String s_importFilename = "";
+    private static String[] s_allowedExtensions = new String[0];
 
     public QGCActivity() {
         m_instance = this;
@@ -71,6 +80,156 @@ public class QGCActivity extends QtActivity {
 
         super.onDestroy();
     }
+
+    /**
+     * Validates that a filename has one of the allowed extensions.
+     * 
+     * @param displayName           The filename to validate
+     * @param allowedExtensions     Array of allowed extensions (e.g., {".crt", ".pem", ".cer"})
+     * @return true if filename ends with one of the allowed extensions
+     */
+    public static boolean isValidCertFileName(final String displayName, final String[] allowedExtensions) {
+        if (displayName == null || displayName.isEmpty()) {
+            return false;
+        }
+    
+        if (allowedExtensions == null || allowedExtensions.length == 0) {
+            return false;
+        }
+    
+        String lower = displayName.toLowerCase(java.util.Locale.ROOT);
+        for (String ext : allowedExtensions) {
+            if (lower.endsWith(ext.toLowerCase(java.util.Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Helper: Extract display name from Content URI
+     */
+    private String extractDisplayName(final Uri uri) {
+        String displayName = "";
+        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                final int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (nameIndex >= 0) {
+                    displayName = cursor.getString(nameIndex);
+                }
+            }
+        } catch (Exception e) {
+            QGCLogger.e(TAG, "Failed to query display name", e);
+        }
+        return displayName;
+    }
+    
+    /**
+     * Copies a file identified by a content URI to the specified destination directory with a fixed filename.
+     *
+     * @param uri       Content URI of the source file
+     * @param destDir   Fully-qualified path of the destination directory
+     * @param filename  Fixed filename (will overwrite if exists)
+     * @return Fully-qualified path of the copied file, or null on failure
+     */
+    private String copyFileToDestination(final Uri uri, final String destDir, final String filename) {
+        if (destDir == null || destDir.isEmpty()) {
+            QGCLogger.e(TAG, "copyFileToDestination: destination directory is empty");
+            return null;
+        }
+    
+        if (filename == null || filename.isEmpty()) {
+            QGCLogger.e(TAG, "copyFileToDestination: filename is empty");
+            return null;
+        }
+    
+        final File destDirectory = new File(destDir);
+        if (!destDirectory.exists()) {
+            QGCLogger.e(TAG, "Destination directory does not exist: " + destDir);
+            return null;
+        }
+    
+        // Save File Fixed name(override)
+        final File destFile = new File(destDirectory, filename);
+    
+        try (InputStream is = getContentResolver().openInputStream(uri);
+            FileOutputStream fos = new FileOutputStream(destFile)) {
+        
+            if (is == null) {
+                QGCLogger.e(TAG, "Failed to open input stream for URI: " + uri);
+                return null;
+            }
+        
+            final byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, bytesRead);
+            }
+        
+            QGCLogger.i(TAG, "File imported successfully to: " + destFile.getAbsolutePath());
+            return destFile.getAbsolutePath();
+        
+        } catch (Exception e) {
+            QGCLogger.e(TAG, "Failed to copy file to destination", e);
+            return null;
+        }
+    }
+
+    /**
+     * Opens Android's native file picker using ACTION_OPEN_DOCUMENT.
+     * The selected file will be copied to the provided destination directory if it has an allowed extension.
+     *
+     * @param destPath              Fully-qualified path of the destination directory
+     * @param filename              Fixed filename for the copied file (will overwrite if exists)
+     * @param allowedExtensions     Array of allowed file extensions (e.g., {".crt", ".pem", ".cer"})
+     */
+    public static void openFileImportDialog(final String destPath, final String filename, final String[] allowedExtensions) {
+        if (m_instance == null) {
+            QGCLogger.e(TAG, "Activity instance is null");
+            return;
+        }
+    
+        s_importDestPath = (destPath != null) ? destPath : "";
+        s_importFilename = (filename != null) ? filename : "";
+        s_allowedExtensions = (allowedExtensions != null) ? allowedExtensions : new String[0];
+    
+        m_instance.runOnUiThread(() -> {
+            final Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            m_instance.startActivityForResult(intent, IMPORT_FILE_REQUEST_CODE);
+        });
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == IMPORT_FILE_REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null) {
+                final Uri uri = data.getData();
+                if (uri != null) {
+                    // Check file extension
+                    final String displayName = extractDisplayName(uri);
+                    if (!isValidCertFileName(displayName, s_allowedExtensions)) {
+                        QGCLogger.w(TAG, "onActivityResult: file extension not allowed. File: " + displayName);
+                        onPQCImportResult("");
+                        return;
+                    }
+                
+                    final String importedPath = copyFileToDestination(uri, s_importDestPath, s_importFilename);
+                    onPQCImportResult(importedPath != null ? importedPath : "");
+                } else {
+                    QGCLogger.w(TAG, "onActivityResult: null URI for file import");
+                    onPQCImportResult("");
+                }
+            } else {
+                QGCLogger.i(TAG, "onActivityResult: file import cancelled or no data returned");
+                onPQCImportResult("");
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+    public native void onPQCImportResult(final String filePath);
 
     /**
      * Keeps the screen on by adding the appropriate window flag.

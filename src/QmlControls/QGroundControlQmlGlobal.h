@@ -31,6 +31,7 @@ class SettingsManager;
 class VideoManager;
 class UTMSPManager;
 class AirLinkManager;
+class OpenSSLPQCSettings;
 
 Q_MOC_INCLUDE("ADSBVehicleManager.h")
 Q_MOC_INCLUDE("FactGroup.h")

@@ -23,6 +23,7 @@ bin/mac
 qrc_*.cpp
 *.Debug
 *.Release
+*.zsh
 tmp
 debug
 release

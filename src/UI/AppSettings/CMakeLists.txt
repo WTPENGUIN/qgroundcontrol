@@ -16,6 +16,7 @@ qt_add_qml_module(AppSettingsModule
         MapSettings.qml
         MockLink.qml
         MockLinkSettings.qml
+        OpenSSLPQCSettings.qml
         PlanViewSettings.qml
         PX4LogTransferSettings.qml
         RemoteIDSettings.qml
