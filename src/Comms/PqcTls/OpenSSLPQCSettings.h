@@ -17,6 +17,7 @@
 #include <QtCore/QSocketNotifier>
 #include <QtCore/QByteArray>
 #include <QtCore/QThread>
+#include "pqc_tls_wrapper.h"
 #if defined(Q_OS_ANDROID)
 #include <QtCore/QJniObject>
 #include "src/Android/AndroidInterface.h"
@@ -63,6 +64,13 @@ public:
     Q_PROPERTY(QString  rawPacketHex           READ rawPacketHex                                           NOTIFY rawPacketHexChanged)
     Q_PROPERTY(QString  decryptedPacketHex     READ decryptedPacketHex                                     NOTIFY decryptedPacketHexChanged)
 
+    // ========== TLS HandShake Information Properties ==========
+    Q_PROPERTY(QString  tlsVersion             READ tlsVersion                                             NOTIFY tlsVersionChanged)
+    Q_PROPERTY(QString  tlsCipher              READ tlsCipher                                              NOTIFY tlsCipherChanged)
+    Q_PROPERTY(QString  tlsKeyExchange         READ tlsKeyExchange                                         NOTIFY tlsKeyExchangeChanged)
+    Q_PROPERTY(QString  tlsServerSig           READ tlsServerSig                                           NOTIFY tlsServerSigChanged)
+    Q_PROPERTY(QString  tlsServerPubKey        READ tlsServerPubKey                                        NOTIFY tlsServerPubKeyChanged)
+
     // ========== Getter Methods ==========
     QString serverIpAddress() const { return _serverIpAddress; }
     QString serverPortNumber() const { return _serverPortNumber; }
@@ -80,6 +88,13 @@ public:
     // ========== Raw & Decrypted Packet Hex Getters ==========
     QString rawPacketHex() const { return _rawPacketHex; }
     QString decryptedPacketHex() const { return _decryptedPacketHex; }
+
+    // ========== TLS HandShake Information Getters ==========
+    QString tlsVersion() const { return _tlsVersion; }
+    QString tlsCipher() const { return _tlsCipher; }
+    QString tlsKeyExchange() const { return _tlsKeyExchange; }
+    QString tlsServerSig() const { return _tlsServerSig; }
+    QString tlsServerPubKey() const { return _tlsServerPubKey; }
 
     // ========== Setter Methods ==========
     void setServerIpAddress(const QString& address);
@@ -141,6 +156,13 @@ signals:
     void rawPacketHexChanged();
     void decryptedPacketHexChanged();
 
+    // ========== TLS HandShake Information Signals ==========
+    void tlsVersionChanged(const QString& version);
+    void tlsCipherChanged(const QString& cipher);
+    void tlsKeyExchangeChanged(const QString& keyExchange);
+    void tlsServerSigChanged(const QString& serverSig);
+    void tlsServerPubKeyChanged(const QString& serverPubKey);
+
 private:
     // Server Configuration
     QString _serverIpAddress = "192.168.0.203";
@@ -173,19 +195,27 @@ private:
       // ========== Raw & Decrypted Packet Hex Buffers ==========
       QString _rawPacketHex;        // Latest 1 encrypted packet (hex string)
       QString _decryptedPacketHex;  // Latest 1 decrypted packet (hex string)
+
+       // ========== TLS HandShake Information ==========
+        QString _tlsVersion;
+        QString _tlsCipher;
+        QString _tlsKeyExchange;
+        QString _tlsServerSig;
+        QString _tlsServerPubKey;
      
-     // ========== Worker Thread ==========
+      // ========== Worker Thread ==========
      PQCTLSConnectionWorker* _connectionWorker = nullptr;
      bool _isConnecting = false;
 
-       // ========== Helper Methods ==========
-       QString getPrivateFolderPath() const;
-       void setupSocketNotifiers();
-       void cleanupSocketNotifiers();
-       void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
-       void appendRawPacket(const uint8_t* data, int len);        // Capture encrypted packet
-       void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
-       static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
+        // ========== Helper Methods ==========
+        QString getPrivateFolderPath() const;
+        void setupSocketNotifiers();
+        void cleanupSocketNotifiers();
+        void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
+         void appendRawPacket(const uint8_t* data, int len);        // Capture encrypted packet
+         void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
+         static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
+         void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);       // Extract TLS handshake info
 
     // ========== Private Slots ==========
 private slots:

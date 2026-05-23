@@ -45,6 +45,13 @@ Item {
     property string rawPacketViewerContent: qsTr("Awaiting raw packets...")
     property string decryptedPacketViewerContent: qsTr("Awaiting decrypted packets...")
     property string mavlinkViewerContent: qsTr("Awaiting Mavlink messages...")
+    
+    // TLS HandShake Information properties
+    property string tlsVersion: ""
+    property string tlsCipher: ""
+    property string tlsKeyExchange: ""
+    property string tlsServerSig: ""
+    property string tlsServerPubKey: ""
 
     // Download 폴더 경로 (Qt StandardPaths API)
     property string downloadFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)
@@ -75,6 +82,13 @@ Item {
         rawPacketViewerContent = OpenSSLPQCSettings.rawPacketHex
         decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
         
+        // TLS HandShake Information 로드 (Signal handler에서 업데이트)
+        tlsVersion = ""
+        tlsCipher = ""
+        tlsKeyExchange = ""
+        tlsServerSig = ""
+        tlsServerPubKey = ""
+        
         // 파일 선택 여부 판단
         caBundleSelected = (OpenSSLPQCSettings.caBundleFilePath !== "")
         clientCertSelected = (OpenSSLPQCSettings.clientCertFilePath !== "")
@@ -101,6 +115,26 @@ Item {
         
         function onDecryptedPacketHexChanged() {
             decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
+        }
+        
+        function onTlsVersionChanged(version) {
+            tlsVersion = version
+        }
+        
+        function onTlsCipherChanged(cipher) {
+            tlsCipher = cipher
+        }
+        
+        function onTlsKeyExchangeChanged(keyExchange) {
+            tlsKeyExchange = keyExchange
+        }
+        
+        function onTlsServerSigChanged(serverSig) {
+            tlsServerSig = serverSig
+        }
+        
+        function onTlsServerPubKeyChanged(serverPubKey) {
+            tlsServerPubKey = serverPubKey
         }
     }
 
@@ -322,7 +356,84 @@ Item {
                 }
             }
 
-            // ===== Section 4: SSL Log Viewer =====
+            // ===== Section 4: TLS HandShake Information =====
+            SettingsGroupLayout {
+                Layout.fillWidth: true
+                heading: qsTr("TLS HandShake Information")
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 15
+                    rowSpacing: 10
+                    
+                    // Row 1: TLS Version
+                    QGCLabel {
+                        text: qsTr("TLS Version:")
+                        font.bold: true
+                        color: qgcPal.text
+                    }
+                    QGCLabel {
+                        text: tlsVersion === "" ? qsTr("(Not connected)") : tlsVersion
+                        color: tlsVersion === "" ? qgcPal.windowShadeDark : qgcPal.text
+                        Layout.fillWidth: true
+                    }
+                    
+                    // Row 2: Cipher Suite
+                    QGCLabel {
+                        text: qsTr("Cipher Suite:")
+                        font.bold: true
+                        color: qgcPal.text
+                    }
+                    QGCLabel {
+                        text: tlsCipher === "" ? qsTr("(Not connected)") : tlsCipher
+                        color: tlsCipher === "" ? qgcPal.windowShadeDark : qgcPal.text
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                    
+                    // Row 3: Key Exchange Group
+                    QGCLabel {
+                        text: qsTr("Key Exchange Group:")
+                        font.bold: true
+                        color: qgcPal.text
+                    }
+                    QGCLabel {
+                        text: tlsKeyExchange === "" ? qsTr("(Not connected)") : tlsKeyExchange
+                        color: tlsKeyExchange === "" ? qgcPal.windowShadeDark : qgcPal.text
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                    
+                    // Row 4: Server Cert Signature
+                    QGCLabel {
+                        text: qsTr("Server Cert Signature:")
+                        font.bold: true
+                        color: qgcPal.text
+                    }
+                    QGCLabel {
+                        text: tlsServerSig === "" ? qsTr("(Not connected)") : tlsServerSig
+                        color: tlsServerSig === "" ? qgcPal.windowShadeDark : qgcPal.text
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                    
+                    // Row 5: Server Public Key
+                    QGCLabel {
+                        text: qsTr("Server Public Key:")
+                        font.bold: true
+                        color: qgcPal.text
+                    }
+                    QGCLabel {
+                        text: tlsServerPubKey === "" ? qsTr("(Not connected)") : tlsServerPubKey
+                        color: tlsServerPubKey === "" ? qgcPal.windowShadeDark : qgcPal.text
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                    }
+                }
+            }
+
+            // ===== Section 5: SSL Log Viewer =====
             SettingsGroupLayout {
                 Layout.fillWidth: true
                 heading: qsTr("SSL Log Viewer")
@@ -352,7 +463,7 @@ Item {
                 }
             }
 
-            // ===== Section 5: Message Viewers =====
+            // ===== Section 6: Message Viewers =====
             SettingsGroupLayout {
                 Layout.fillWidth: true
                 heading: qsTr("Message Viewers")

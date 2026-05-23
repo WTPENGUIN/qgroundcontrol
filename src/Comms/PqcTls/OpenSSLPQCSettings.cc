@@ -10,7 +10,6 @@
 #include "OpenSSLPQCSettings.h"
 #include "PQCTLSConnectionWorker.h"
 #include "QGCLoggingCategory.h"
-#include "pqc_tls_wrapper.h"
 
 #include <QtQml/QQmlEngine>
 
@@ -227,6 +226,14 @@ void OpenSSLPQCSettings::connectToServer()
             qCDebug(OpenSSLPQCLog) << "[PQC-Main] ✅ Connection established!";
             _pqcCtx = static_cast<pqc_tls_ctx_t*>(ctx);
             setupSocketNotifiers();
+            
+            // 방어: ctx 재확인 (race condition 방지)
+            if (_pqcCtx) {
+                extractAndLogHandshakeInfo(_pqcCtx);  // NEW: 핸드셰이크 정보 추출
+            } else {
+                qCWarning(OpenSSLPQCLog) << "[PQC-Main] Warning: ctx became NULL after setupSocketNotifiers";
+            }
+            
             setServerConnected(true);
             emit connectionStatusChanged("connected");
         } else {
@@ -746,4 +753,86 @@ void OpenSSLPQCSettings::appendDecryptedPacket(const uint8_t* data, int len)
     
     // Store latest decrypted packet as hex string
     _decryptedPacketHex = bytesToHex(data, len);
+}
+
+// ===== TLS HandShake Information Extraction =====
+
+void OpenSSLPQCSettings::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
+{
+    // NULL 체크
+    if (!ctx) {
+        qCWarning(OpenSSLPQCLog) << "[HandShake-Info] Error: ctx is NULL";
+        _tlsVersion = "ERROR";
+        _tlsCipher = "ERROR";
+        _tlsKeyExchange = "ERROR";
+        _tlsServerSig = "ERROR";
+        _tlsServerPubKey = "ERROR";
+        emit tlsVersionChanged(_tlsVersion);
+        emit tlsCipherChanged(_tlsCipher);
+        emit tlsKeyExchangeChanged(_tlsKeyExchange);
+        emit tlsServerSigChanged(_tlsServerSig);
+        emit tlsServerPubKeyChanged(_tlsServerPubKey);
+        return;
+    }
+    
+    qCDebug(OpenSSLPQCLog) << "[HandShake-Info] Extracting TLS handshake information...";
+    
+    // Wrapper 함수 호출
+    pqc_tls_handshake_info_t info = pqc_tls_get_handshake_info(ctx);
+    
+    // 유효성 체크
+    if (!info.valid) {
+        qCWarning(OpenSSLPQCLog) << "[HandShake-Info] Error: Failed to extract handshake info";
+        _tlsVersion = "ERROR";
+        _tlsCipher = "ERROR";
+        _tlsKeyExchange = "ERROR";
+        _tlsServerSig = "ERROR";
+        _tlsServerPubKey = "ERROR";
+        emit tlsVersionChanged(_tlsVersion);
+        emit tlsCipherChanged(_tlsCipher);
+        emit tlsKeyExchangeChanged(_tlsKeyExchange);
+        emit tlsServerSigChanged(_tlsServerSig);
+        emit tlsServerPubKeyChanged(_tlsServerPubKey);
+        return;
+    }
+    
+    // 각 필드 개별 추출 및 업데이트
+    _tlsVersion = QString::fromUtf8(info.version.version);
+    _tlsCipher = QString::fromUtf8(info.cipher.name);
+    _tlsKeyExchange = QString::fromUtf8(info.key_exchange.group_name);
+    _tlsServerSig = QString::fromUtf8(info.signature.algorithm);
+    _tlsServerPubKey = QString::fromUtf8(info.public_key.algorithm);
+    
+    // 각 필드에 추가 정보 포함
+    if (info.cipher.bits > 0) {
+        _tlsCipher += QString(" (%1 bits)").arg(info.cipher.bits);
+    }
+    
+    if (info.key_exchange.nid > 0) {
+        _tlsKeyExchange += QString(" (NID: %1)").arg(info.key_exchange.nid);
+    }
+    
+    if (strlen(info.signature.long_name) > 0) {
+        _tlsServerSig += QString(" (%1)").arg(QString::fromUtf8(info.signature.long_name));
+    }
+    
+    if (info.public_key.key_bits > 0) {
+        _tlsServerPubKey += QString(" (%1 bits)").arg(info.public_key.key_bits);
+    } else if (strlen(info.public_key.long_name) > 0) {
+        _tlsServerPubKey += QString(" (%1)").arg(QString::fromUtf8(info.public_key.long_name));
+    }
+    
+    // Signal 방출
+    emit tlsVersionChanged(_tlsVersion);
+    emit tlsCipherChanged(_tlsCipher);
+    emit tlsKeyExchangeChanged(_tlsKeyExchange);
+    emit tlsServerSigChanged(_tlsServerSig);
+    emit tlsServerPubKeyChanged(_tlsServerPubKey);
+    
+    qCDebug(OpenSSLPQCLog) << "[HandShake-Info] Extraction complete"
+                           << "Version:" << _tlsVersion
+                           << "Cipher:" << _tlsCipher
+                           << "KeyExchange:" << _tlsKeyExchange
+                           << "ServerSig:" << _tlsServerSig
+                           << "ServerPubKey:" << _tlsServerPubKey;
 }

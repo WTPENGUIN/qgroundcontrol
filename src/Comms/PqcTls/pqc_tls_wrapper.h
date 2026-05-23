@@ -37,6 +37,55 @@ int pqc_tls_write(pqc_tls_ctx_t* ctx, const uint8_t* buf, int len);
 
 void pqc_tls_close(pqc_tls_ctx_t* ctx);
 
+// ===== TLS HandShake Information Structures =====
+
+typedef struct {
+    char name[128];      // e.g., "TLS_AES_256_GCM_SHA384"
+    int bits;            // e.g., 256
+} pqc_tls_cipher_t;
+
+typedef struct {
+    char version[32];    // e.g., "TLSv1.3"
+} pqc_tls_version_t;
+
+typedef struct {
+    char group_name[128]; // e.g., "mlkem768"
+    int nid;             // NID (e.g., 16781804)
+} pqc_tls_key_exchange_t;
+
+typedef struct {
+    char algorithm[128]; // e.g., "id-ml-dsa-65"
+    char long_name[256]; // Full algorithm name
+} pqc_tls_signature_t;
+
+typedef struct {
+    char algorithm[128]; // e.g., "ML-DSA-65"
+    int key_bits;        // e.g., 15616
+    char long_name[256]; // Full algorithm name
+} pqc_tls_public_key_t;
+
+// 통합 구조체
+typedef struct {
+    pqc_tls_cipher_t cipher;
+    pqc_tls_version_t version;
+    pqc_tls_key_exchange_t key_exchange;
+    pqc_tls_signature_t signature;
+    pqc_tls_public_key_t public_key;
+    int valid;  // 1=유효, 0=유효하지 않음 (NULL ctx 등)
+} pqc_tls_handshake_info_t;
+
+// ===== TLS HandShake Information Functions =====
+
+// 통합 함수 (모든 정보 한 번에 조회)
+pqc_tls_handshake_info_t pqc_tls_get_handshake_info(const pqc_tls_ctx_t* ctx);
+
+// 개별 조회 함수 (선택적)
+pqc_tls_cipher_t pqc_tls_get_cipher(const pqc_tls_ctx_t* ctx);
+pqc_tls_version_t pqc_tls_get_version(const pqc_tls_ctx_t* ctx);
+pqc_tls_key_exchange_t pqc_tls_get_key_exchange_group(const pqc_tls_ctx_t* ctx);
+pqc_tls_signature_t pqc_tls_get_server_cert_signature(const pqc_tls_ctx_t* ctx);
+pqc_tls_public_key_t pqc_tls_get_server_public_key(const pqc_tls_ctx_t* ctx);
+
 #ifdef __cplusplus
 }
 #endif
