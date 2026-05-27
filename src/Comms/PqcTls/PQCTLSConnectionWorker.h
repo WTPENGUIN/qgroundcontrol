@@ -17,7 +17,7 @@ extern "C" {
 typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
 }
 
-class OpenSSLPQCSettings;
+class OpenSSLPQCController;
 
 /// Worker thread for async PQC TLS connection
 /// Prevents UI thread blocking during TLS handshake
@@ -26,7 +26,7 @@ class PQCTLSConnectionWorker : public QThread
     Q_OBJECT
     
 public:
-    explicit PQCTLSConnectionWorker(OpenSSLPQCSettings* parent);
+    explicit PQCTLSConnectionWorker(OpenSSLPQCController* parent);
     ~PQCTLSConnectionWorker();
     
     /// Main thread execution (blocking operations OK here)
@@ -43,5 +43,5 @@ signals:
     void finished(bool success, void* ctx);
     
 private:
-    OpenSSLPQCSettings* _parent;
+    OpenSSLPQCController* _parent;
 };

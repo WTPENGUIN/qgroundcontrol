@@ -7,37 +7,37 @@
  *
  ****************************************************************************/
 
-#include "OpenSSLPQCSettings.h"
+#include "OpenSSLPQCController.h"
 #include "PQCTLSConnectionWorker.h"
 #include "QGCLoggingCategory.h"
 
 #include <QtQml/QQmlEngine>
 
-QGC_LOGGING_CATEGORY(OpenSSLPQCLog, "qgc.etri.pqc")
+QGC_LOGGING_CATEGORY(OpenSSLPQCControllerLog, "qgc.etri.pqc")
 
 // ========== JNI Callback Management ==========
-static OpenSSLPQCSettings* g_pqcSettingsInstance = nullptr;
+static OpenSSLPQCController* g_pqcSettingsInstance = nullptr;
 static QString s_currentImportTarget = "";
 
 // ========== Constructor / Destructor ==========
 
-OpenSSLPQCSettings::OpenSSLPQCSettings(QObject *parent) : QObject(parent)
+OpenSSLPQCController::OpenSSLPQCController(QObject *parent) : QObject(parent)
 {
-    qCDebug(OpenSSLPQCLog) << "OpenSSLPQCSettings Singleton created";
+    qCDebug(OpenSSLPQCControllerLog) << "OpenSSLPQCController Singleton created";
     
 #if defined(Q_OS_ANDROID)
     registerJNICallback();
 #endif
 }
 
-OpenSSLPQCSettings::~OpenSSLPQCSettings()
+OpenSSLPQCController::~OpenSSLPQCController()
 {
-    // 1. Disconnect from server (closes connection and cleans up notifiers)
+    // Disconnect from server (closes connection and cleans up notifiers)
     disconnectFromServer();
     
-    // 2. Clean up worker thread
+    // Clean up worker thread
     if (_connectionWorker) {
-        qCDebug(OpenSSLPQCLog) << "[Destructor] Cleaning up worker thread...";
+        qCDebug(OpenSSLPQCControllerLog) << "[Destructor] Cleaning up worker thread...";
         if (_connectionWorker->isRunning()) {
             _connectionWorker->requestInterruption();
             _connectionWorker->wait(5000);
@@ -46,91 +46,90 @@ OpenSSLPQCSettings::~OpenSSLPQCSettings()
         _connectionWorker = nullptr;
     }
     
-    // 3. Cleanup OpenSSL library
+    // Cleanup OpenSSL library
     pqc_tls_cleanup_library();
 }
 
 // ========== Server Configuration Setters ==========
 
-void OpenSSLPQCSettings::setServerIpAddress(const QString& address)
+void OpenSSLPQCController::setServerIpAddress(const QString& address)
 {
     if (_serverIpAddress != address) {
         _serverIpAddress = address;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Server] IP Address:" << address;
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Server] IP Address:" << address;
         emit serverIpAddressChanged(address);
     }
 }
 
-void OpenSSLPQCSettings::setServerPortNumber(const QString& port)
+void OpenSSLPQCController::setServerPortNumber(const QString& port)
 {
     if (_serverPortNumber != port) {
         _serverPortNumber = port;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Server] Port:" << port;
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Server] Port:" << port;
         emit serverPortNumberChanged(port);
     }
 }
 
-void OpenSSLPQCSettings::setServerConnected(bool connected)
+void OpenSSLPQCController::setServerConnected(bool connected)
 {
     if (_serverConnected != connected) {
         _serverConnected = connected;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Server] Status:" << (connected ? "CONNECTED" : "DISCONNECTED");
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Server] Status:" << (connected ? "CONNECTED" : "DISCONNECTED");
         emit serverConnectedChanged(connected);
     }
 }
 
 // ========== Routing Configuration Setters ==========
 
-void OpenSSLPQCSettings::setRoutingPortNumber(const QString& port)
+void OpenSSLPQCController::setRoutingPortNumber(const QString& port)
 {
     if (_routingPortNumber != port) {
         _routingPortNumber = port;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Routing] Port:" << port;
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Routing] Port:" << port;
         emit routingPortNumberChanged(port);
     }
 }
 
-void OpenSSLPQCSettings::setRoutingConnected(bool connected)
+void OpenSSLPQCController::setRoutingConnected(bool connected)
 {
     if (_routingConnected != connected) {
         _routingConnected = connected;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Routing] Status:" << (connected ? "CONNECTED" : "DISCONNECTED");
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Routing] Status:" << (connected ? "CONNECTED" : "DISCONNECTED");
         emit routingConnectedChanged(connected);
     }
 }
 
 // ========== Credential Setters ==========
 
-void OpenSSLPQCSettings::setCaBundleFilePath(const QString& path)
+void OpenSSLPQCController::setCaBundleFilePath(const QString& path)
 {
     if (_caBundleFilePath != path) {
         _caBundleFilePath = path;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Credentials] CA Bundle:" << path;
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Credentials] CA Bundle:" << path;
         emit caBundleFilePathChanged(path);
     }
 }
 
-void OpenSSLPQCSettings::setClientCertFilePath(const QString& path)
+void OpenSSLPQCController::setClientCertFilePath(const QString& path)
 {
     if (_clientCertFilePath != path) {
         _clientCertFilePath = path;
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-Credentials] Client Cert:" << path;
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-Credentials] Client Cert:" << path;
         emit clientCertFilePathChanged(path);
     }
 }
 
 // ========== PQC TLS Logging Callback ==========
 
-void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
+void OpenSSLPQCController::logCallback(void* userData, const char* msg)
 {
     if (!msg) return;
-    
     QString msgStr = QString::fromUtf8(msg);
     
-    // 1. Debug log output
-    qCDebug(OpenSSLPQCLog) << "[PQC-C-Library]" << msgStr;
+    // Debug log output
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-C-Library]" << msgStr;
     
-    // 2. Filter out read/write logs
+    // Filter out read/write logs
     if (msgStr.contains("Sent bytes:", Qt::CaseInsensitive) ||
         msgStr.contains("Received bytes:", Qt::CaseInsensitive) ||
         msgStr.contains("Write:", Qt::CaseInsensitive) ||
@@ -138,8 +137,8 @@ void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
         return;  // Filtered out
     }
     
-    // 3. Append to TLS log buffer
-    OpenSSLPQCSettings* self = static_cast<OpenSSLPQCSettings*>(userData);
+    // Append to TLS log buffer
+    OpenSSLPQCController* self = static_cast<OpenSSLPQCController*>(userData);
     if (self) {
         self->appendTlsLog(msgStr);
     }
@@ -147,42 +146,42 @@ void OpenSSLPQCSettings::logCallback(void* userData, const char* msg)
 
 // ========== Server Connection Methods ==========
 
-void OpenSSLPQCSettings::connectToServer()
+void OpenSSLPQCController::connectToServer()
 {
-    qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== SERVER CONNECT REQUEST (ASYNC) ==========";
-    qCDebug(OpenSSLPQCLog) << "  IP Address      :" << _serverIpAddress;
-    qCDebug(OpenSSLPQCLog) << "  Port            :" << _serverPortNumber;
-    qCDebug(OpenSSLPQCLog) << "====================================================";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== SERVER CONNECT REQUEST (ASYNC) ==========";
+    qCDebug(OpenSSLPQCControllerLog) << "  IP Address      :" << _serverIpAddress;
+    qCDebug(OpenSSLPQCControllerLog) << "  Port            :" << _serverPortNumber;
+    qCDebug(OpenSSLPQCControllerLog) << "====================================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // Prevent duplicate connections
     if (_serverConnected || _isConnecting) {
-        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Already connected or connecting";
+        qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] Already connected or connecting";
         return;
     }
     
     // Input validation
     if (_serverIpAddress.isEmpty()) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Server IP address is empty";
+        qCCritical(OpenSSLPQCControllerLog) << "[PQC-Connect] Error: Server IP address is empty";
         setServerConnected(false);
         return;
     }
     
     if (_serverPortNumber.isEmpty()) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Server port number is empty";
+        qCCritical(OpenSSLPQCControllerLog) << "[PQC-Connect] Error: Server port number is empty";
         setServerConnected(false);
         return;
     }
     
     if (_caBundleFilePath.isEmpty()) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: CA bundle file path is empty";
+        qCCritical(OpenSSLPQCControllerLog) << "[PQC-Connect] Error: CA bundle file path is empty";
         setServerConnected(false);
         return;
     }
     
     if (_clientCertFilePath.isEmpty()) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Client certificate file path is empty";
+        qCCritical(OpenSSLPQCControllerLog) << "[PQC-Connect] Error: Client certificate file path is empty";
         setServerConnected(false);
         return;
     }
@@ -191,7 +190,7 @@ void OpenSSLPQCSettings::connectToServer()
     bool portOk = false;
     int port = _serverPortNumber.toInt(&portOk);
     if (!portOk || port <= 0 || port > 65535) {
-        qCCritical(OpenSSLPQCLog) << "[PQC-Connect] Error: Invalid port number" << _serverPortNumber;
+        qCCritical(OpenSSLPQCControllerLog) << "[PQC-Connect] Error: Invalid port number" << _serverPortNumber;
         setServerConnected(false);
         return;
     }
@@ -201,12 +200,12 @@ void OpenSSLPQCSettings::connectToServer()
     _isConnecting = true;
     emit connectionStatusChanged("connecting");
     
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Starting async connection...";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] Starting async connection...";
     
     // Clean up existing worker thread before creating a new one
     // QThread can only be started once, so we must create a new instance for each connection
     if (_connectionWorker) {
-        qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Cleaning up previous worker thread...";
+        qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] Cleaning up previous worker thread...";
         if (_connectionWorker->isRunning()) {
             _connectionWorker->requestInterruption();
             _connectionWorker->wait(5000);
@@ -217,13 +216,13 @@ void OpenSSLPQCSettings::connectToServer()
     
     // Create a new worker thread for this connection attempt
     _connectionWorker = new PQCTLSConnectionWorker(this);
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] New worker thread created";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] New worker thread created";
     
     // Connect worker finished signal
     connect(_connectionWorker, static_cast<void(PQCTLSConnectionWorker::*)(bool, void*)>(&PQCTLSConnectionWorker::finished),
             this, [this](bool success, void* ctx) {
         if (success && ctx) {
-            qCDebug(OpenSSLPQCLog) << "[PQC-Main] ✅ Connection established!";
+            qCDebug(OpenSSLPQCControllerLog) << "[PQC-Main] ✅ Connection established!";
             _pqcCtx = static_cast<pqc_tls_ctx_t*>(ctx);
             setupSocketNotifiers();
             
@@ -231,13 +230,13 @@ void OpenSSLPQCSettings::connectToServer()
             if (_pqcCtx) {
                 extractAndLogHandshakeInfo(_pqcCtx);  // NEW: 핸드셰이크 정보 추출
             } else {
-                qCWarning(OpenSSLPQCLog) << "[PQC-Main] Warning: ctx became NULL after setupSocketNotifiers";
+                qCWarning(OpenSSLPQCControllerLog) << "[PQC-Main] Warning: ctx became NULL after setupSocketNotifiers";
             }
             
             setServerConnected(true);
             emit connectionStatusChanged("connected");
         } else {
-            qCCritical(OpenSSLPQCLog) << "[PQC-Main] ❌ Connection failed";
+            qCCritical(OpenSSLPQCControllerLog) << "[PQC-Main] ❌ Connection failed";
             setServerConnected(false);
             emit connectionStatusChanged("error");
             emit connectionError("Failed to establish PQC TLS connection");
@@ -245,7 +244,6 @@ void OpenSSLPQCSettings::connectToServer()
         _isConnecting = false;
     });
     
-    // connect(_connectionWorker, &QThread::finished, _connectionWorker, &QObject::deleteLater);
     connect(_connectionWorker, &QThread::finished, this, [this]() {
         _connectionWorker->deleteLater();
         _connectionWorker = nullptr;
@@ -257,22 +255,22 @@ void OpenSSLPQCSettings::connectToServer()
     _connectionWorker->_clientCert = _clientCertFilePath;
     _connectionWorker->_caBundlePath = _caBundleFilePath;
     
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] Connection parameters set";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] Connection parameters set";
     
     // Start the new worker thread
     _connectionWorker->start();
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] New worker thread started";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] New worker thread started";
     
-    qCDebug(OpenSSLPQCLog) << "[PQC-Connect] ⬅️  Main thread returns immediately (UI responsive!)";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Connect] ⬅️  Main thread returns immediately (UI responsive!)";
+    qCDebug(OpenSSLPQCControllerLog) << "";
 }
 
-void OpenSSLPQCSettings::disconnectFromServer()
+void OpenSSLPQCController::disconnectFromServer()
 {
-    qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== SERVER DISCONNECT REQUEST ==========";
-    qCDebug(OpenSSLPQCLog) << "============================================";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== SERVER DISCONNECT REQUEST ==========";
+    qCDebug(OpenSSLPQCControllerLog) << "============================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // Mutex lock for safe cleanup - protects against concurrent access from socket notifiers
     {
@@ -284,17 +282,43 @@ void OpenSSLPQCSettings::disconnectFromServer()
         
         // Close PQC TLS connection
         if (_pqcCtx) {
-            qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Closing PQC TLS connection...";
+            qCDebug(OpenSSLPQCControllerLog) << "[PQC-Disconnect] Closing PQC TLS connection...";
             pqc_tls_close(_pqcCtx);
             _pqcCtx = nullptr;
         }
     }
     
-    qCDebug(OpenSSLPQCLog) << "[PQC-Disconnect] Connection closed";
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Disconnect] Connection closed";
     
     // Clear buffers (no mutex needed - no concurrent access)
     _readBuffer.clear();
     _writeBuffer.clear();
+    
+    // Clear TLS handshake information and emit signals
+    _tlsVersion = "";
+    _tlsCipher = "";
+    _tlsKeyExchange = "";
+    _tlsServerSig = "";
+    _tlsServerPubKey = "";
+    
+    emit tlsVersionChanged(_tlsVersion);
+    emit tlsCipherChanged(_tlsCipher);
+    emit tlsKeyExchangeChanged(_tlsKeyExchange);
+    emit tlsServerSigChanged(_tlsServerSig);
+    emit tlsServerPubKeyChanged(_tlsServerPubKey);
+
+    // Reset TLS packet hex
+    _rawPacketHex = "Awaiting raw packets...";
+    _decryptedPacketHex = "Awaiting decrypted packets...";
+
+    emit rawPacketHexChanged();
+    emit decryptedPacketHexChanged();
+
+    // Notice TLS disconnect
+    QString msgDisStr = QString::fromUtf8("Disconnect from Socket by User.");
+    appendTlsLog(msgDisStr);
+    
+    qCDebug(OpenSSLPQCControllerLog) << "[PQC-Disconnect] TLS handshake information cleared";
     
     // Update connection status
     setServerConnected(false);
@@ -302,40 +326,40 @@ void OpenSSLPQCSettings::disconnectFromServer()
 
 // ========== Routing Connection Methods ==========
 
-void OpenSSLPQCSettings::routeConnection()
+void OpenSSLPQCController::routeConnection()
 {
-    qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== ROUTING CONNECT REQUEST ==========";
-    qCDebug(OpenSSLPQCLog) << "  Port            :" << _routingPortNumber;
-    qCDebug(OpenSSLPQCLog) << "==========================================";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING CONNECT REQUEST ==========";
+    qCDebug(OpenSSLPQCControllerLog) << "  Port            :" << _routingPortNumber;
+    qCDebug(OpenSSLPQCControllerLog) << "==========================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // TODO: Implement actual routing connection logic
     setRoutingConnected(true);
 }
 
-void OpenSSLPQCSettings::disconnectRouting()
+void OpenSSLPQCController::disconnectRouting()
 {
-    qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== ROUTING DISCONNECT REQUEST ==========";
-    qCDebug(OpenSSLPQCLog) << "==============================================";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING DISCONNECT REQUEST ==========";
+    qCDebug(OpenSSLPQCControllerLog) << "==============================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // TODO: Implement actual routing disconnection logic
     setRoutingConnected(false);
 }
 
 // ========== File Import Methods (Android) ==========
-void OpenSSLPQCSettings::registerJNICallback()
+void OpenSSLPQCController::registerJNICallback()
 {
 #if defined(Q_OS_ANDROID)
     g_pqcSettingsInstance = this;
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File-JNI] Callback registered";
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File-JNI] Callback registered";
 #endif
 }
-void OpenSSLPQCSettings::callOpenPQCFileImportDialog(const QString& targetFilename)
+void OpenSSLPQCController::callOpenPQCFileImportDialog(const QString& targetFilename)
 {
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Opening file import dialog for:" << targetFilename;
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Opening file import dialog for:" << targetFilename;
     
 #if defined(Q_OS_ANDROID)
     // 현재 import 대상 저장
@@ -346,12 +370,12 @@ void OpenSSLPQCSettings::callOpenPQCFileImportDialog(const QString& targetFilena
     QStringList allowedExtensions;
     allowedExtensions << ".crt" << ".pem" << ".cer";
     
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Private folder:" << privateFolderPath;
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Allowed extensions:" << allowedExtensions;
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Private folder:" << privateFolderPath;
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Allowed extensions:" << allowedExtensions;
     
     AndroidInterface::openPQCFileImportDialog(privateFolderPath, targetFilename, allowedExtensions);
 #else
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Not on Android platform";
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Not on Android platform";
 #endif
 }
 
@@ -362,44 +386,44 @@ extern "C"
         JNIEnv* env, jobject obj, jstring filePath)
     {
         if (g_pqcSettingsInstance == nullptr) {
-            qCDebug(OpenSSLPQCLog) << "[OpenSSL-File-JNI] Settings instance is null";
+            qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File-JNI] Settings instance is null";
             return;
         }
         
         const QString importedPath = QJniObject(filePath).toString();
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-File-JNI] Callback received. File path:" << importedPath
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File-JNI] Callback received. File path:" << importedPath
                               << "Target:" << s_currentImportTarget;
         
         if (importedPath.isEmpty()) {
-            qCDebug(OpenSSLPQCLog) << "[OpenSSL-File-JNI] Import cancelled or failed";
+            qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File-JNI] Import cancelled or failed";
             return;
         }
         
         // 파일명으로 구분하여 적절한 프로퍼티 업데이트
         if (s_currentImportTarget == "ca_bundle.crt") {
             g_pqcSettingsInstance->setCaBundleFilePath(importedPath);
-            qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] CA Bundle imported:" << importedPath;
-        } else if (s_currentImportTarget == "client_cert.crt") {
+            qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] CA Bundle imported:" << importedPath;
+        } else if (s_currentImportTarget == "client_cert.pem") {
             g_pqcSettingsInstance->setClientCertFilePath(importedPath);
-            qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Client Certificate imported:" << importedPath;
+            qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Client Certificate imported:" << importedPath;
         } else {
-            qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Unknown import target:" << s_currentImportTarget;
+            qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Unknown import target:" << s_currentImportTarget;
         }
     }
 }
 
 // ========== File Copy Methods ==========
-QString OpenSSLPQCSettings::getPrivateFolderPath() const
+QString OpenSSLPQCController::getPrivateFolderPath() const
 {
     QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     return path;
 }
 
-QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, const QString& filename)
+QString OpenSSLPQCController::copyAndGetAbsolutePath(const QString& contentUri, const QString& filename)
 {
     // 빈 URI 체크 (파일 미선택)
     if (contentUri.isEmpty()) {
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] File not selected (empty URI)";
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] File not selected (empty URI)";
         return "";
     }
     
@@ -410,7 +434,7 @@ QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, co
     // Source 파일 열기
     QFile sourceFile(contentUri);
     if (!sourceFile.open(QIODevice::ReadOnly)) {
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Failed to open source:" << contentUri 
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Failed to open source:" << contentUri 
                                << "Error:" << sourceFile.errorString();
         return "";
     }
@@ -418,7 +442,7 @@ QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, co
     // Target 파일 쓰기 (자동 덮어쓰기)
     QFile targetFile(targetFilePath);
     if (!targetFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] Failed to open target:" << targetFilePath 
+        qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] Failed to open target:" << targetFilePath 
                                << "Error:" << targetFile.errorString();
         sourceFile.close();
         return "";
@@ -430,7 +454,7 @@ QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, co
     targetFile.close();
     
     // 성공 로깅
-    qCDebug(OpenSSLPQCLog) << "[OpenSSL-File] File copied successfully:"
+    qCDebug(OpenSSLPQCControllerLog) << "[OpenSSL-File] File copied successfully:"
                            << "Source:" << contentUri
                            << "Target:" << targetFilePath
                            << "Size:" << bytesWritten << "bytes";
@@ -440,18 +464,18 @@ QString OpenSSLPQCSettings::copyAndGetAbsolutePath(const QString& contentUri, co
 
 // ========== PQC TLS Socket Notifiers ==========
 
-void OpenSSLPQCSettings::setupSocketNotifiers()
+void OpenSSLPQCController::setupSocketNotifiers()
 {
     QMutexLocker locker(&_contextMutex);
     
     if (!_pqcCtx) {
-        qCWarning(OpenSSLPQCLog) << "[Notifier-Setup] PQC context is null";
+        qCWarning(OpenSSLPQCControllerLog) << "[Notifier-Setup] PQC context is null";
         return;
     }
     
     int fd = pqc_tls_get_fd(_pqcCtx);
     if (fd < 0) {
-        qCWarning(OpenSSLPQCLog) << "[Notifier-Setup] Invalid file descriptor";
+        qCWarning(OpenSSLPQCControllerLog) << "[Notifier-Setup] Invalid file descriptor";
         return;
     }
     
@@ -461,18 +485,18 @@ void OpenSSLPQCSettings::setupSocketNotifiers()
     // Create read notifier
     _readNotifier = new QSocketNotifier(fd, QSocketNotifier::Read, this);
     connect(_readNotifier, &QSocketNotifier::activated,
-            this, &OpenSSLPQCSettings::onSocketReadyRead);
+            this, &OpenSSLPQCController::onSocketReadyRead);
     
     // Create write notifier (disabled initially)
     _writeNotifier = new QSocketNotifier(fd, QSocketNotifier::Write, this);
     connect(_writeNotifier, &QSocketNotifier::activated,
-            this, &OpenSSLPQCSettings::onSocketReadyWrite);
+            this, &OpenSSLPQCController::onSocketReadyWrite);
     _writeNotifier->setEnabled(false);
     
-    qCDebug(OpenSSLPQCLog) << "[Notifier-Setup] Socket notifiers setup complete (fd:" << fd << ")";
+    qCDebug(OpenSSLPQCControllerLog) << "[Notifier-Setup] Socket notifiers setup complete (fd:" << fd << ")";
 }
 
-void OpenSSLPQCSettings::cleanupSocketNotifiers()
+void OpenSSLPQCController::cleanupSocketNotifiers()
 {
     if (_readNotifier) {
         disconnect(_readNotifier, nullptr, this, nullptr);
@@ -484,17 +508,17 @@ void OpenSSLPQCSettings::cleanupSocketNotifiers()
         delete _writeNotifier;
         _writeNotifier = nullptr;
     }
-    qCDebug(OpenSSLPQCLog) << "[Notifier-Cleanup] Socket notifiers cleaned up";
+    qCDebug(OpenSSLPQCControllerLog) << "[Notifier-Cleanup] Socket notifiers cleaned up";
 }
 
 // ========== PQC TLS Data Read/Write ==========
 
-QByteArray OpenSSLPQCSettings::readData(int maxSize)
+QByteArray OpenSSLPQCController::readData(int maxSize)
 {
     QMutexLocker locker(&_contextMutex);
     
     if (!_pqcCtx) {
-        qCDebug(OpenSSLPQCLog) << "[Read] Not connected";
+        qCDebug(OpenSSLPQCControllerLog) << "[Read] Not connected";
         return QByteArray();
     }
     
@@ -507,13 +531,13 @@ QByteArray OpenSSLPQCSettings::readData(int maxSize)
         
         if (n > 0) {
             _readBuffer.append((const char*)buf, n);
-            qCDebug(OpenSSLPQCLog) << "[Read] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
+            qCDebug(OpenSSLPQCControllerLog) << "[Read] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
         } else if (n == 0) {
             // No data available
             break;
         } else {
             // Error occurred
-            qCCritical(OpenSSLPQCLog) << "[Read] Read error, disconnecting";
+            qCCritical(OpenSSLPQCControllerLog) << "[Read] Read error, disconnecting";
             locker.unlock();
             disconnectFromServer();
             break;
@@ -525,13 +549,13 @@ QByteArray OpenSSLPQCSettings::readData(int maxSize)
     _readBuffer.clear();  // Auto-clear buffer
     
     if (!result.isEmpty()) {
-        qCDebug(OpenSSLPQCLog) << "[Read] Returning" << result.size() << "bytes";
+        qCDebug(OpenSSLPQCControllerLog) << "[Read] Returning" << result.size() << "bytes";
     }
     
     return result;
 }
 
-int OpenSSLPQCSettings::writeData(const QByteArray& data)
+int OpenSSLPQCController::writeData(const QByteArray& data)
 {
     if (data.isEmpty()) {
         return 0;
@@ -540,13 +564,13 @@ int OpenSSLPQCSettings::writeData(const QByteArray& data)
     QMutexLocker locker(&_contextMutex);
     
     if (!_pqcCtx) {
-        qCWarning(OpenSSLPQCLog) << "[Write] Not connected, discarding" << data.size() << "bytes";
+        qCWarning(OpenSSLPQCControllerLog) << "[Write] Not connected, discarding" << data.size() << "bytes";
         return -1;
     }
     
     // Add data to write buffer
     _writeBuffer.append(data);
-    qCDebug(OpenSSLPQCLog) << "[Write] Added" << data.size() << "bytes to buffer, total:" << _writeBuffer.size() << "bytes";
+    qCDebug(OpenSSLPQCControllerLog) << "[Write] Added" << data.size() << "bytes to buffer, total:" << _writeBuffer.size() << "bytes";
     
     // Attempt to send data immediately (loop)
     int totalSent = 0;
@@ -556,19 +580,19 @@ int OpenSSLPQCSettings::writeData(const QByteArray& data)
                              _writeBuffer.size());
         
         if (n > 0) {
-            qCDebug(OpenSSLPQCLog) << "[Write] Sent" << n << "bytes (requested:" << _writeBuffer.size() << ")";
+            qCDebug(OpenSSLPQCControllerLog) << "[Write] Sent" << n << "bytes (requested:" << _writeBuffer.size() << ")";
             _writeBuffer.remove(0, n);
             totalSent += n;
         } else if (n == 0) {
             // Buffer full or would block - enable write notifier for event loop
-            qCDebug(OpenSSLPQCLog) << "[Write] Write would block, enabling notifier for" << _writeBuffer.size() << "remaining bytes";
+            qCDebug(OpenSSLPQCControllerLog) << "[Write] Write would block, enabling notifier for" << _writeBuffer.size() << "remaining bytes";
             if (_writeNotifier) {
                 _writeNotifier->setEnabled(true);
             }
             break;
         } else {
             // Error occurred
-            qCCritical(OpenSSLPQCLog) << "[Write] Write error, disconnecting";
+            qCCritical(OpenSSLPQCControllerLog) << "[Write] Write error, disconnecting";
             locker.unlock();
             disconnectFromServer();
             return -1;
@@ -577,14 +601,14 @@ int OpenSSLPQCSettings::writeData(const QByteArray& data)
     
     // Return number of bytes still pending in buffer
     int pendingBytes = _writeBuffer.size();
-    qCDebug(OpenSSLPQCLog) << "[Write] Write complete. Sent:" << totalSent << "bytes, Pending:" << pendingBytes << "bytes";
+    qCDebug(OpenSSLPQCControllerLog) << "[Write] Write complete. Sent:" << totalSent << "bytes, Pending:" << pendingBytes << "bytes";
     
     return pendingBytes;
 }
 
 // ========== PQC TLS Socket Event Handlers ==========
 
-void OpenSSLPQCSettings::onSocketReadyRead()
+void OpenSSLPQCController::onSocketReadyRead()
 {
     uint8_t buf[4096];
     uint8_t enc_buf[16400];  // Encrypted packet buffer
@@ -593,14 +617,14 @@ void OpenSSLPQCSettings::onSocketReadyRead()
     QMutexLocker locker(&_contextMutex);
     
     if (!_pqcCtx) {
-        qCWarning(OpenSSLPQCLog) << "[ReadEvent] PQC context is null";
+        qCWarning(OpenSSLPQCControllerLog) << "[ReadEvent] PQC context is null";
         return;
     }
     
     int n = pqc_tls_read(_pqcCtx, buf, sizeof(buf), enc_buf, sizeof(enc_buf), &encrypted_len);
     
     if (n > 0) {
-        qCDebug(OpenSSLPQCLog) << "[ReadEvent] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
+        qCDebug(OpenSSLPQCControllerLog) << "[ReadEvent] Read" << n << "bytes (encrypted:" << encrypted_len << "bytes)";
         
         // Capture encrypted and decrypted packets
         appendRawPacket(enc_buf, encrypted_len);
@@ -614,17 +638,17 @@ void OpenSSLPQCSettings::onSocketReadyRead()
         
     } else if (n == 0) {
         // No data available (normal)
-        qCDebug(OpenSSLPQCLog) << "[ReadEvent] No data available (waiting...)";
+        qCDebug(OpenSSLPQCControllerLog) << "[ReadEvent] No data available (waiting...)";
         
     } else {
         // Error occurred
-        qCCritical(OpenSSLPQCLog) << "[ReadEvent] Read error, disconnecting";
+        qCCritical(OpenSSLPQCControllerLog) << "[ReadEvent] Read error, disconnecting";
         locker.unlock();
         disconnectFromServer();
     }
 }
 
-void OpenSSLPQCSettings::onSocketReadyWrite()
+void OpenSSLPQCController::onSocketReadyWrite()
 {
     QMutexLocker locker(&_contextMutex);
     
@@ -650,18 +674,18 @@ void OpenSSLPQCSettings::onSocketReadyWrite()
                              _writeBuffer.size());
         
         if (n > 0) {
-            qCDebug(OpenSSLPQCLog) << "[WriteEvent] Sent" << n << "bytes";
+            qCDebug(OpenSSLPQCControllerLog) << "[WriteEvent] Sent" << n << "bytes";
             _writeBuffer.remove(0, n);
             totalSent += n;
             
         } else if (n == 0) {
             // Buffer full or would block
-            qCDebug(OpenSSLPQCLog) << "[WriteEvent] Write would block, retrying later";
+            qCDebug(OpenSSLPQCControllerLog) << "[WriteEvent] Write would block, retrying later";
             break;
             
         } else {
             // Error occurred
-            qCCritical(OpenSSLPQCLog) << "[WriteEvent] Write error, disconnecting";
+            qCCritical(OpenSSLPQCControllerLog) << "[WriteEvent] Write error, disconnecting";
             locker.unlock();
             disconnectFromServer();
             return;
@@ -683,7 +707,7 @@ void OpenSSLPQCSettings::onSocketReadyWrite()
 
 // ========== TLS Log Buffer Management ==========
 
-void OpenSSLPQCSettings::appendTlsLog(const QString& msg)
+void OpenSSLPQCController::appendTlsLog(const QString& msg)
 {
     // Generate timestamp (HH:MM:SS format)
     QTime currentTime = QTime::currentTime();
@@ -706,7 +730,7 @@ void OpenSSLPQCSettings::appendTlsLog(const QString& msg)
 
 // ========== Raw & Decrypted Packet Hex Management ==========
 
-QString OpenSSLPQCSettings::bytesToHex(const uint8_t* data, int len)
+QString OpenSSLPQCController::bytesToHex(const uint8_t* data, int len)
 {
     if (!data || len <= 0) {
         return QString();
@@ -733,7 +757,7 @@ QString OpenSSLPQCSettings::bytesToHex(const uint8_t* data, int len)
     return hexString;
 }
 
-void OpenSSLPQCSettings::appendRawPacket(const uint8_t* data, int len)
+void OpenSSLPQCController::appendRawPacket(const uint8_t* data, int len)
 {
     if (!data || len <= 0) {
         _rawPacketHex = QString();
@@ -744,7 +768,7 @@ void OpenSSLPQCSettings::appendRawPacket(const uint8_t* data, int len)
     _rawPacketHex = bytesToHex(data, len);
 }
 
-void OpenSSLPQCSettings::appendDecryptedPacket(const uint8_t* data, int len)
+void OpenSSLPQCController::appendDecryptedPacket(const uint8_t* data, int len)
 {
     if (!data || len <= 0) {
         _decryptedPacketHex = QString();
@@ -757,11 +781,11 @@ void OpenSSLPQCSettings::appendDecryptedPacket(const uint8_t* data, int len)
 
 // ===== TLS HandShake Information Extraction =====
 
-void OpenSSLPQCSettings::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
+void OpenSSLPQCController::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
 {
     // NULL 체크
     if (!ctx) {
-        qCWarning(OpenSSLPQCLog) << "[HandShake-Info] Error: ctx is NULL";
+        qCWarning(OpenSSLPQCControllerLog) << "[HandShake-Info] Error: ctx is NULL";
         _tlsVersion = "ERROR";
         _tlsCipher = "ERROR";
         _tlsKeyExchange = "ERROR";
@@ -775,14 +799,14 @@ void OpenSSLPQCSettings::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
         return;
     }
     
-    qCDebug(OpenSSLPQCLog) << "[HandShake-Info] Extracting TLS handshake information...";
+    qCDebug(OpenSSLPQCControllerLog) << "[HandShake-Info] Extracting TLS handshake information...";
     
     // Wrapper 함수 호출
     pqc_tls_handshake_info_t info = pqc_tls_get_handshake_info(ctx);
     
     // 유효성 체크
     if (!info.valid) {
-        qCWarning(OpenSSLPQCLog) << "[HandShake-Info] Error: Failed to extract handshake info";
+        qCWarning(OpenSSLPQCControllerLog) << "[HandShake-Info] Error: Failed to extract handshake info";
         _tlsVersion = "ERROR";
         _tlsCipher = "ERROR";
         _tlsKeyExchange = "ERROR";
@@ -829,7 +853,7 @@ void OpenSSLPQCSettings::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
     emit tlsServerSigChanged(_tlsServerSig);
     emit tlsServerPubKeyChanged(_tlsServerPubKey);
     
-    qCDebug(OpenSSLPQCLog) << "[HandShake-Info] Extraction complete"
+    qCDebug(OpenSSLPQCControllerLog) << "[HandShake-Info] Extraction complete"
                            << "Version:" << _tlsVersion
                            << "Cipher:" << _tlsCipher
                            << "KeyExchange:" << _tlsKeyExchange

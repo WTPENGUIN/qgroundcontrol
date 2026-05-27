@@ -57,7 +57,7 @@
 #ifdef QGC_UTM_ADAPTER
 #include "UTMSPManager.h"
 #endif
-#include "OpenSSLPQCSettings.h"
+#include "OpenSSLPQCController.h"
 
 #include <QtCore/QSettings>
 #include <QtCore/QLineF>
@@ -79,9 +79,9 @@ static QObject* qgroundcontrolQmlGlobalSingletonFactory(QQmlEngine*, QJSEngine*)
     return qmlGlobal;
 }
 
-static QObject* openSSLPQCSettingsSingletonFactory(QQmlEngine*, QJSEngine*)
+static QObject* OpenSSLPQCControllerSingletonFactory(QQmlEngine*, QJSEngine*)
 {
-    OpenSSLPQCSettings* pqcSettings = new OpenSSLPQCSettings();
+    OpenSSLPQCController* pqcSettings = new OpenSSLPQCController();
     return pqcSettings;
 }
 
@@ -114,7 +114,7 @@ void QGroundControlQmlGlobal::registerQmlTypes()
     qmlRegisterSingletonType<ScreenToolsController>     ("QGroundControl.ScreenToolsController", 1, 0, "ScreenToolsController",  screenToolsControllerSingletonFactory);
     
     // OpenSSL PQC
-    qmlRegisterSingletonType<OpenSSLPQCSettings>        ("OpenSSLPQCSettings",                   0, 1, "OpenSSLPQCSettings",     openSSLPQCSettingsSingletonFactory);
+    qmlRegisterSingletonType<OpenSSLPQCController>        ("OpenSSLPQCController",                   0, 1, "OpenSSLPQCController",     OpenSSLPQCControllerSingletonFactory);
 }
 
 QGroundControlQmlGlobal::QGroundControlQmlGlobal(QObject *parent)

@@ -60,8 +60,8 @@ endif()
 #===========================================================================#
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
-        PqcTls/OpenSSLPQCSettings.cc
-        PqcTls/OpenSSLPQCSettings.h
+        PqcTls/OpenSSLPQCController.cc
+        PqcTls/OpenSSLPQCController.h
         PqcTls/PQCTLSConnectionWorker.cc
         PqcTls/PQCTLSConnectionWorker.h
 )

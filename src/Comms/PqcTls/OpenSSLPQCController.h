@@ -30,19 +30,19 @@ typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
 
 class PQCTLSConnectionWorker;
 
-Q_DECLARE_LOGGING_CATEGORY(OpenSSLPQCLog)
+Q_DECLARE_LOGGING_CATEGORY(OpenSSLPQCControllerLog)
 
 /// OpenSSL PQC Settings - Singleton for QML/C++ integration
-/// Location: src/Comms/PqcTls/OpenSSLPQCSettings.h
+/// Location: src/Comms/PqcTls/OpenSSLPQCController.h
 /// Purpose: UI state management and command invocation from QML
 /// Note: This is a technology demonstration implementation with no dependency on existing communication links
-class OpenSSLPQCSettings : public QObject
+class OpenSSLPQCController : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit OpenSSLPQCSettings(QObject *parent = nullptr);
-    ~OpenSSLPQCSettings();
+    explicit OpenSSLPQCController(QObject *parent = nullptr);
+    ~OpenSSLPQCController();
 
     // ========== Server Configuration Properties ==========
     Q_PROPERTY(QString  serverIpAddress        READ serverIpAddress        WRITE setServerIpAddress        NOTIFY serverIpAddressChanged)

@@ -8,7 +8,7 @@
  ****************************************************************************/
 
 #include "PQCTLSConnectionWorker.h"
-#include "OpenSSLPQCSettings.h"
+#include "OpenSSLPQCController.h"
 #include "pqc_tls_wrapper.h"
 #include "QGCLoggingCategory.h"
 
@@ -16,10 +16,10 @@
 
 // ========== Constructor / Destructor ==========
 
-PQCTLSConnectionWorker::PQCTLSConnectionWorker(OpenSSLPQCSettings* parent)
+PQCTLSConnectionWorker::PQCTLSConnectionWorker(OpenSSLPQCController* parent)
     : QThread(parent), _port(0), _parent(parent)
 {
-    qCDebug(OpenSSLPQCLog) << "[Worker] Constructor: Async connection worker created";
+    qCDebug(OpenSSLPQCControllerLog) << "[Worker] Constructor: Async connection worker created";
 }
 
 PQCTLSConnectionWorker::~PQCTLSConnectionWorker()
@@ -28,58 +28,58 @@ PQCTLSConnectionWorker::~PQCTLSConnectionWorker()
         requestInterruption();
         wait(5000);
     }
-    qCDebug(OpenSSLPQCLog) << "[Worker] Destructor: Worker destroyed";
+    qCDebug(OpenSSLPQCControllerLog) << "[Worker] Destructor: Worker destroyed";
 }
 
 // ========== Main Worker Thread Execution ==========
 
 void PQCTLSConnectionWorker::run()
 {
-    qCDebug(OpenSSLPQCLog) << "";
-    qCDebug(OpenSSLPQCLog) << "========== WORKER THREAD STARTED ==========";
-    qCDebug(OpenSSLPQCLog) << "Thread ID:" << QThread::currentThreadId();
-    qCDebug(OpenSSLPQCLog) << "==========================================";
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== WORKER THREAD STARTED ==========";
+    qCDebug(OpenSSLPQCControllerLog) << "Thread ID:" << QThread::currentThreadId();
+    qCDebug(OpenSSLPQCControllerLog) << "==========================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // Validate connection parameters
     if (_ip.isEmpty()) {
-        qCCritical(OpenSSLPQCLog) << "[Worker] Error: Server IP is empty";
+        qCCritical(OpenSSLPQCControllerLog) << "[Worker] Error: Server IP is empty";
         emit finished(false, nullptr);
         return;
     }
     
     if (_port <= 0 || _port > 65535) {
-        qCCritical(OpenSSLPQCLog) << "[Worker] Error: Invalid port" << _port;
+        qCCritical(OpenSSLPQCControllerLog) << "[Worker] Error: Invalid port" << _port;
         emit finished(false, nullptr);
         return;
     }
     
     // Initialize PQC TLS library
-    qCDebug(OpenSSLPQCLog) << "[Worker] Initializing PQC TLS library...";
+    qCDebug(OpenSSLPQCControllerLog) << "[Worker] Initializing PQC TLS library...";
     pqc_tls_init_library();
     
     // Attempt PQC TLS connection (BLOCKING - OK in worker thread)
-    qCDebug(OpenSSLPQCLog) << "[Worker] Connecting to" << _ip << ":" << _port;
+    qCDebug(OpenSSLPQCControllerLog) << "[Worker] Connecting to" << _ip << ":" << _port;
     
     pqc_tls_ctx_t* ctx = pqc_tls_connect(
         _ip.toUtf8().constData(),
         _port,
         _clientCert.toUtf8().constData(),
         _caBundlePath.toUtf8().constData(),
-        &OpenSSLPQCSettings::logCallback,  // Capture handshake logs
+        &OpenSSLPQCController::logCallback,  // Capture handshake logs
         _parent  // userData (this pointer)
     );
     
-    qCDebug(OpenSSLPQCLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "";
     
     // Check connection result and emit with context
     if (ctx != nullptr) {
-        qCDebug(OpenSSLPQCLog) << "[Worker] ✅ PQC TLS Connection SUCCESS";
+        qCDebug(OpenSSLPQCControllerLog) << "[Worker] ✅ PQC TLS Connection SUCCESS";
         emit finished(true, ctx);
     } else {
-        qCCritical(OpenSSLPQCLog) << "[Worker] ❌ PQC TLS Connection FAILED";
+        qCCritical(OpenSSLPQCControllerLog) << "[Worker] ❌ PQC TLS Connection FAILED";
         emit finished(false, nullptr);
     }
     
-    qCDebug(OpenSSLPQCLog) << "[Worker] Worker thread exiting";
+    qCDebug(OpenSSLPQCControllerLog) << "[Worker] Worker thread exiting";
 }

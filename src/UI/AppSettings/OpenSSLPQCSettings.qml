@@ -18,7 +18,7 @@ import QGroundControl
 import QGroundControl.Controls
 import QGroundControl.ScreenTools
 import QGroundControl.Palette
-import OpenSSLPQCSettings
+import OpenSSLPQCController
 
 Item {
     id: __openSSLPQCRoot
@@ -69,18 +69,18 @@ Item {
 
     Component.onCompleted: {
         // C++ Singleton에서 값 읽어오기
-        ipAddress = OpenSSLPQCSettings.serverIpAddress || "192.168.0.203"
-        portNumber = OpenSSLPQCSettings.serverPortNumber || "4433"
-        routingPortNumber = OpenSSLPQCSettings.routingPortNumber || "14550"
-        isConnected = OpenSSLPQCSettings.serverConnected
-        isRoutingConnected = OpenSSLPQCSettings.routingConnected
+        ipAddress = OpenSSLPQCController.serverIpAddress || "192.168.0.203"
+        portNumber = OpenSSLPQCController.serverPortNumber || "4433"
+        routingPortNumber = OpenSSLPQCController.routingPortNumber || "14550"
+        isConnected = OpenSSLPQCController.serverConnected
+        isRoutingConnected = OpenSSLPQCController.routingConnected
         
         // SSL 로그 버퍼 로드
-        sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
+        sslLogViewerContent = OpenSSLPQCController.tlsLogBuffer
         
         // Raw & Decrypted Packet Hex 로드
-        rawPacketViewerContent = OpenSSLPQCSettings.rawPacketHex
-        decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
+        rawPacketViewerContent = OpenSSLPQCController.rawPacketHex
+        decryptedPacketViewerContent = OpenSSLPQCController.decryptedPacketHex
         
         // TLS HandShake Information 로드 (Signal handler에서 업데이트)
         tlsVersion = ""
@@ -90,12 +90,12 @@ Item {
         tlsServerPubKey = ""
         
         // 파일 선택 여부 판단
-        caBundleSelected = (OpenSSLPQCSettings.caBundleFilePath !== "")
-        clientCertSelected = (OpenSSLPQCSettings.clientCertFilePath !== "")
+        caBundleSelected = (OpenSSLPQCController.caBundleFilePath !== "")
+        clientCertSelected = (OpenSSLPQCController.clientCertFilePath !== "")
     }
 
     Connections {
-        target: OpenSSLPQCSettings
+        target: OpenSSLPQCController
     
         function onServerConnectedChanged(connected) {
             isConnected = connected
@@ -106,15 +106,15 @@ Item {
         }
         
         function onTlsLogBufferChanged() {
-            sslLogViewerContent = OpenSSLPQCSettings.tlsLogBuffer
+            sslLogViewerContent = OpenSSLPQCController.tlsLogBuffer
         }
         
         function onRawPacketHexChanged() {
-            rawPacketViewerContent = OpenSSLPQCSettings.rawPacketHex
+            rawPacketViewerContent = OpenSSLPQCController.rawPacketHex
         }
         
         function onDecryptedPacketHexChanged() {
-            decryptedPacketViewerContent = OpenSSLPQCSettings.decryptedPacketHex
+            decryptedPacketViewerContent = OpenSSLPQCController.decryptedPacketHex
         }
         
         function onTlsVersionChanged(version) {
@@ -169,16 +169,16 @@ Item {
                             text: qsTr("CA Bundle")
                             primary: caBundleSelected
                             onClicked: {
-                                OpenSSLPQCSettings.callOpenPQCFileImportDialog("ca_bundle.crt")
+                                OpenSSLPQCController.callOpenPQCFileImportDialog("ca_bundle.crt")
                                 caBundleSelected = true
                             }
                         }
 
                         QGCLabel {
                             Layout.alignment: Qt.AlignHCenter
-                            text: getFileName(OpenSSLPQCSettings.caBundleFilePath) ? "(" + getFileName(OpenSSLPQCSettings.caBundleFilePath) + ")" : ""
+                            text: getFileName(OpenSSLPQCController.caBundleFilePath) ? "(" + getFileName(OpenSSLPQCController.caBundleFilePath) + ")" : ""
                             font.pointSize: ScreenTools.smallFontPointSize
-                            visible: getFileName(OpenSSLPQCSettings.caBundleFilePath) !== ""
+                            visible: getFileName(OpenSSLPQCController.caBundleFilePath) !== ""
                         }
                     }
 
@@ -193,16 +193,16 @@ Item {
                             text: qsTr("Client Certificate")
                             primary: clientCertSelected
                             onClicked: {
-                                OpenSSLPQCSettings.callOpenPQCFileImportDialog("client_cert.crt")
+                                OpenSSLPQCController.callOpenPQCFileImportDialog("client_cert.pem")
                                 clientCertSelected = true
                             }
                         }
 
                         QGCLabel {
                             Layout.alignment: Qt.AlignHCenter
-                            text: getFileName(OpenSSLPQCSettings.clientCertFilePath) ? "(" + getFileName(OpenSSLPQCSettings.clientCertFilePath) + ")" : ""
+                            text: getFileName(OpenSSLPQCController.clientCertFilePath) ? "(" + getFileName(OpenSSLPQCController.clientCertFilePath) + ")" : ""
                             font.pointSize: ScreenTools.smallFontPointSize
-                            visible: getFileName(OpenSSLPQCSettings.clientCertFilePath) !== ""
+                            visible: getFileName(OpenSSLPQCController.clientCertFilePath) !== ""
                         }
                     }
                 }
@@ -232,7 +232,7 @@ Item {
                             text: ipAddress
                             onTextChanged: {
                                 ipAddress = text
-                                OpenSSLPQCSettings.serverIpAddress = text
+                                OpenSSLPQCController.serverIpAddress = text
                             }
                             placeholderText: qsTr("192.168.0.203")
                         }
@@ -253,7 +253,7 @@ Item {
                             text: portNumber
                             onTextChanged: { 
                                 portNumber = text
-                                OpenSSLPQCSettings.serverPortNumber = text
+                                OpenSSLPQCController.serverPortNumber = text
                             }
                             placeholderText: qsTr("4433")
                             numericValuesOnly: true
@@ -275,15 +275,15 @@ Item {
                             showBorder: true
                             onClicked: {
                                 // Update C++ properties
-                                OpenSSLPQCSettings.serverIpAddress = ipAddress
-                                OpenSSLPQCSettings.serverPortNumber = portNumber
+                                OpenSSLPQCController.serverIpAddress = ipAddress
+                                OpenSSLPQCController.serverPortNumber = portNumber
                                 
                                 // Call C++ methods
                                 if (isConnected) {
-                                    OpenSSLPQCSettings.disconnectFromServer()
+                                    OpenSSLPQCController.disconnectFromServer()
                                     isConnected = false
                                 } else {
-                                    OpenSSLPQCSettings.connectToServer()
+                                    OpenSSLPQCController.connectToServer()
                                     isConnected = true
                                 }
                             }
@@ -317,7 +317,7 @@ Item {
                             text: routingPortNumber
                             onTextChanged: {
                                 routingPortNumber = text
-                                OpenSSLPQCSettings.routingPortNumber = text
+                                OpenSSLPQCController.routingPortNumber = text
                             }
                             placeholderText: qsTr("14550")
                             numericValuesOnly: true
@@ -340,14 +340,14 @@ Item {
                             showBorder: true
                             onClicked: {
                                 // Update C++ properties first
-                                OpenSSLPQCSettings.routingPortNumber = routingPortNumber
+                                OpenSSLPQCController.routingPortNumber = routingPortNumber
                                 
                                 // Call C++ methods
                                 if (isRoutingConnected) {
-                                    OpenSSLPQCSettings.disconnectRouting()
+                                    OpenSSLPQCController.disconnectRouting()
                                     isRoutingConnected = false
                                 } else {
-                                    OpenSSLPQCSettings.routeConnection()
+                                    OpenSSLPQCController.routeConnection()
                                     isRoutingConnected = true
                                 }
                             }
