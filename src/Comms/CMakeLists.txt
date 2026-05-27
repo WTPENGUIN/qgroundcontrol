@@ -64,6 +64,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         PqcTls/OpenSSLPQCController.h
         PqcTls/PQCTLSConnectionWorker.cc
         PqcTls/PQCTLSConnectionWorker.h
+        PqcTls/MavlinkValidator.cc
+        PqcTls/MavlinkValidator.h
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/PqcTls)

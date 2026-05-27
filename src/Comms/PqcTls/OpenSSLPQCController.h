@@ -18,6 +18,7 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QThread>
 #include "pqc_tls_wrapper.h"
+#include "MavlinkValidator.h"
 #if defined(Q_OS_ANDROID)
 #include <QtCore/QJniObject>
 #include "src/Android/AndroidInterface.h"
@@ -203,12 +204,15 @@ private:
         QString _tlsServerSig;
         QString _tlsServerPubKey;
      
-      // ========== Worker Thread ==========
-     PQCTLSConnectionWorker* _connectionWorker = nullptr;
-     bool _isConnecting = false;
+       // ========== Worker Thread ==========
+      PQCTLSConnectionWorker* _connectionWorker = nullptr;
+      bool _isConnecting = false;
 
-        // ========== Helper Methods ==========
-        QString getPrivateFolderPath() const;
+      // ========== MAVLink Validator ==========
+      MavlinkValidator* m_mavlinkValidator = nullptr;
+
+         // ========== Helper Methods ==========
+         QString getPrivateFolderPath() const;
         void setupSocketNotifiers();
         void cleanupSocketNotifiers();
         void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp

@@ -25,6 +25,10 @@ OpenSSLPQCController::OpenSSLPQCController(QObject *parent) : QObject(parent)
 {
     qCDebug(OpenSSLPQCControllerLog) << "OpenSSLPQCController Singleton created";
     
+    // Initialize MAVLink Validator
+    m_mavlinkValidator = new MavlinkValidator(0xFD);
+    qCDebug(OpenSSLPQCControllerLog) << "[Constructor] MAVLink validator initialized";
+    
 #if defined(Q_OS_ANDROID)
     registerJNICallback();
 #endif
@@ -34,6 +38,13 @@ OpenSSLPQCController::~OpenSSLPQCController()
 {
     // Disconnect from server (closes connection and cleans up notifiers)
     disconnectFromServer();
+    
+    // Clean up MAVLink validator
+    if (m_mavlinkValidator) {
+        qCDebug(OpenSSLPQCControllerLog) << "[Destructor] Cleaning up MAVLink validator";
+        delete m_mavlinkValidator;
+        m_mavlinkValidator = nullptr;
+    }
     
     // Clean up worker thread
     if (_connectionWorker) {
@@ -275,6 +286,11 @@ void OpenSSLPQCController::disconnectFromServer()
     // Mutex lock for safe cleanup - protects against concurrent access from socket notifiers
     {
         QMutexLocker locker(&_contextMutex);
+        
+        // Reset MAVLink validator
+        if (m_mavlinkValidator) {
+            m_mavlinkValidator->resetChannel();
+        }
         
         // Clean up socket notifiers first (must be within mutex protection)
         // This prevents race conditions with onSocketReadyRead/onSocketReadyWrite
@@ -631,6 +647,33 @@ void OpenSSLPQCController::onSocketReadyRead()
         appendDecryptedPacket(buf, n);
         emit rawPacketHexChanged();
         emit decryptedPacketHexChanged();
+        
+        // MAVLink Validation
+        if (m_mavlinkValidator) {
+            QByteArray decryptedData((const char*)buf, n);
+            mavlink_message_t mavlinkMsg = {};
+            
+            // Validate and extract ONE complete packet
+            // Parser state preserved across calls for fragmentation handling
+            if (m_mavlinkValidator->validateAndExtractMavlink(decryptedData, mavlinkMsg)) {
+                // ✅ One complete valid MAVLink packet extracted
+                qCDebug(OpenSSLPQCControllerLog)
+                    << "[ReadEvent] ✅ Valid MAVLink message"
+                    << "MsgID:" << mavlinkMsg.msgid
+                    << "Seq:" << mavlinkMsg.seq
+                    << "SysID:" << mavlinkMsg.sysid
+                    << "CompID:" << mavlinkMsg.compid;
+                
+                // TODO: Handle complete MAVLink message
+                // Options:
+                // 1. Forward to MAVLinkProtocol
+                // 2. Emit custom signal
+                // 3. Store in database
+                // 4. Log for debugging
+                
+                // Multiple packets: next onSocketReadyRead() call will extract them
+            }
+        }
         
         _readBuffer.append((const char*)buf, n);
         locker.unlock();
