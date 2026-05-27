@@ -65,6 +65,9 @@ public:
     Q_PROPERTY(QString  rawPacketHex           READ rawPacketHex                                           NOTIFY rawPacketHexChanged)
     Q_PROPERTY(QString  decryptedPacketHex     READ decryptedPacketHex                                     NOTIFY decryptedPacketHexChanged)
 
+    // ========== MAVLink Packet Info Property ==========
+    Q_PROPERTY(QString  mavlinkPacketInfo      READ mavlinkPacketInfo                                      NOTIFY mavlinkPacketInfoUpdated)
+
     // ========== TLS HandShake Information Properties ==========
     Q_PROPERTY(QString  tlsVersion             READ tlsVersion                                             NOTIFY tlsVersionChanged)
     Q_PROPERTY(QString  tlsCipher              READ tlsCipher                                              NOTIFY tlsCipherChanged)
@@ -89,6 +92,9 @@ public:
     // ========== Raw & Decrypted Packet Hex Getters ==========
     QString rawPacketHex() const { return _rawPacketHex; }
     QString decryptedPacketHex() const { return _decryptedPacketHex; }
+
+    // ========== MAVLink Packet Info Getter ==========
+    QString mavlinkPacketInfo() const { return _mavlinkPacketInfo; }
 
     // ========== TLS HandShake Information Getters ==========
     QString tlsVersion() const { return _tlsVersion; }
@@ -164,6 +170,9 @@ signals:
     void tlsServerSigChanged(const QString& serverSig);
     void tlsServerPubKeyChanged(const QString& serverPubKey);
 
+    // ========== MAVLink Packet Info Signal ==========
+    void mavlinkPacketInfoUpdated(QString packetInfo);
+
 private:
     // Server Configuration
     QString _serverIpAddress = "192.168.0.203";
@@ -208,23 +217,28 @@ private:
       PQCTLSConnectionWorker* _connectionWorker = nullptr;
       bool _isConnecting = false;
 
-      // ========== MAVLink Validator ==========
-      MavlinkValidator* m_mavlinkValidator = nullptr;
+       // ========== MAVLink Validator ==========
+       MavlinkValidator* m_mavlinkValidator = nullptr;
 
-         // ========== Helper Methods ==========
+       // ========== MAVLink Packet Info ==========
+       QString _mavlinkPacketInfo = "";
+
+          // ========== Helper Methods ==========
          QString getPrivateFolderPath() const;
         void setupSocketNotifiers();
         void cleanupSocketNotifiers();
         void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
          void appendRawPacket(const uint8_t* data, int len);        // Capture encrypted packet
-         void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
-         static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
-         void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);       // Extract TLS handshake info
+          void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
+          static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
+          void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);       // Extract TLS handshake info
+          QString getMavlinkMessageName(uint32_t msgId);             // Get MAVLink message name from ID
 
-    // ========== Private Slots ==========
-private slots:
-    void onSocketReadyRead();
-    void onSocketReadyWrite();
+     // ========== Private Slots ==========
+ private slots:
+     void onSocketReadyRead();
+     void onSocketReadyWrite();
+     void onMavlinkPacketValidated(const mavlink_message_t& msg);
 
     // ========== JNI Callback Registration ==========
 private:

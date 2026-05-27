@@ -136,6 +136,10 @@ Item {
         function onTlsServerPubKeyChanged(serverPubKey) {
             tlsServerPubKey = serverPubKey
         }
+        
+        function onMavlinkPacketInfoUpdated(packetInfo) {
+            mavlinkViewerContent = packetInfo
+        }
     }
 
     QGCFlickable {

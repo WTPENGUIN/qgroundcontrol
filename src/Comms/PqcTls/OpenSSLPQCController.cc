@@ -10,8 +10,10 @@
 #include "OpenSSLPQCController.h"
 #include "PQCTLSConnectionWorker.h"
 #include "QGCLoggingCategory.h"
+#include "mavlink.h"
 
 #include <QtQml/QQmlEngine>
+#include <QtCore/QDateTime>
 
 QGC_LOGGING_CATEGORY(OpenSSLPQCControllerLog, "qgc.etri.pqc")
 
@@ -649,31 +651,27 @@ void OpenSSLPQCController::onSocketReadyRead()
         emit decryptedPacketHexChanged();
         
         // MAVLink Validation
-        if (m_mavlinkValidator) {
-            QByteArray decryptedData((const char*)buf, n);
-            mavlink_message_t mavlinkMsg = {};
-            
-            // Validate and extract ONE complete packet
-            // Parser state preserved across calls for fragmentation handling
-            if (m_mavlinkValidator->validateAndExtractMavlink(decryptedData, mavlinkMsg)) {
-                // ✅ One complete valid MAVLink packet extracted
-                qCDebug(OpenSSLPQCControllerLog)
-                    << "[ReadEvent] ✅ Valid MAVLink message"
-                    << "MsgID:" << mavlinkMsg.msgid
-                    << "Seq:" << mavlinkMsg.seq
-                    << "SysID:" << mavlinkMsg.sysid
-                    << "CompID:" << mavlinkMsg.compid;
-                
-                // TODO: Handle complete MAVLink message
-                // Options:
-                // 1. Forward to MAVLinkProtocol
-                // 2. Emit custom signal
-                // 3. Store in database
-                // 4. Log for debugging
-                
-                // Multiple packets: next onSocketReadyRead() call will extract them
-            }
-        }
+         if (m_mavlinkValidator) {
+             QByteArray decryptedData((const char*)buf, n);
+             mavlink_message_t mavlinkMsg = {};
+             
+             // Validate and extract ONE complete packet
+             // Parser state preserved across calls for fragmentation handling
+             if (m_mavlinkValidator->validateAndExtractMavlink(decryptedData, mavlinkMsg)) {
+                 // ✅ One complete valid MAVLink packet extracted
+                 qCDebug(OpenSSLPQCControllerLog)
+                     << "[ReadEvent] ✅ Valid MAVLink message"
+                     << "MsgID:" << mavlinkMsg.msgid
+                     << "Seq:" << mavlinkMsg.seq
+                     << "SysID:" << mavlinkMsg.sysid
+                     << "CompID:" << mavlinkMsg.compid;
+                 
+                 // Call slot to handle packet info update
+                 onMavlinkPacketValidated(mavlinkMsg);
+                 
+                 // Multiple packets: next onSocketReadyRead() call will extract them
+             }
+         }
         
         _readBuffer.append((const char*)buf, n);
         locker.unlock();
@@ -902,4 +900,71 @@ void OpenSSLPQCController::extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx)
                            << "KeyExchange:" << _tlsKeyExchange
                            << "ServerSig:" << _tlsServerSig
                            << "ServerPubKey:" << _tlsServerPubKey;
+}
+
+// ========== MAVLink Message Handling ==========
+
+QString OpenSSLPQCController::getMavlinkMessageName(uint32_t msgId)
+{
+    // Use MAVLINK_MESSAGE_NAMES macro which provides { "NAME", msgid } pairs
+    // This is defined in the MAVLink library's common.h
+    
+    #define MAVLINK_MESSAGE_NAMES_ARRAY MAVLINK_MESSAGE_NAMES
+    
+    // MAVLINK_MESSAGE_NAMES is a compound literal with structure: { "NAME", msgid }
+    // We need to iterate through and find the matching msgid
+    
+    const struct {
+        const char* name;
+        uint32_t msgid;
+    } names[] = MAVLINK_MESSAGE_NAMES;
+    
+    static const size_t namesCount = sizeof(names) / sizeof(names[0]);
+    
+    for (size_t i = 0; i < namesCount; ++i) {
+        if (names[i].msgid == msgId) {
+            return QString::fromLatin1(names[i].name);
+        }
+    }
+    
+    return "";  // Return empty string if message not found
+}
+
+void OpenSSLPQCController::onMavlinkPacketValidated(const mavlink_message_t& msg)
+{
+    // Get message name from ID
+    QString msgName = getMavlinkMessageName(msg.msgid);
+    
+    // Format message ID string
+    QString msgIdStr;
+    if (msgName.isEmpty()) {
+        msgIdStr = QString::number(msg.msgid);
+    } else {
+        msgIdStr = QString::number(msg.msgid) + " (" + msgName + ")";
+    }
+    
+    // Get current system time in HH:mm:ss.zzz format
+    QString timeStr = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+    
+    // Format packet information
+    _mavlinkPacketInfo = QString(
+        "MsgID: %1\n"
+        "Seq: %2 | SysID: %3 | CompID: %4\n"
+        "Timestamp: %5"
+    )
+    .arg(msgIdStr)
+    .arg(msg.seq)
+    .arg(msg.sysid)
+    .arg(msg.compid)
+    .arg(timeStr);
+    
+    // Emit signal to update QML
+    emit mavlinkPacketInfoUpdated(_mavlinkPacketInfo);
+    
+    qCDebug(OpenSSLPQCControllerLog)
+        << "[MAVLink] Packet info updated:"
+        << "MsgID:" << msg.msgid
+        << "Name:" << msgName
+        << "Seq:" << msg.seq
+        << "Time:" << timeStr;
 }
