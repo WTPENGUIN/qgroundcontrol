@@ -9,11 +9,8 @@
 
 #include "MavlinkValidator.h"
 #include "QGCLoggingCategory.h"
-#include <cstring>
-
-extern "C" {
 #include "mavlink.h"
-}
+#include <cstring>
 
 QGC_LOGGING_CATEGORY(PQCMavlinkValidatorLog, "qgc.etri.validator")
 

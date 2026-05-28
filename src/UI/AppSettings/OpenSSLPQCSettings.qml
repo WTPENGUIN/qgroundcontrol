@@ -71,7 +71,7 @@ Item {
         // C++ Singleton에서 값 읽어오기
         ipAddress = OpenSSLPQCController.serverIpAddress || "192.168.0.203"
         portNumber = OpenSSLPQCController.serverPortNumber || "4433"
-        routingPortNumber = OpenSSLPQCController.routingPortNumber || "14550"
+        routingPortNumber = OpenSSLPQCController.routingPortNumber || "18000"
         isConnected = OpenSSLPQCController.serverConnected
         isRoutingConnected = OpenSSLPQCController.routingConnected
         
@@ -82,12 +82,12 @@ Item {
         rawPacketViewerContent = OpenSSLPQCController.rawPacketHex
         decryptedPacketViewerContent = OpenSSLPQCController.decryptedPacketHex
         
-        // TLS HandShake Information 로드 (Signal handler에서 업데이트)
-        tlsVersion = ""
-        tlsCipher = ""
-        tlsKeyExchange = ""
-        tlsServerSig = ""
-        tlsServerPubKey = ""
+        // TLS HandShake Information 로드
+        tlsVersion = OpenSSLPQCController.tlsVersion
+        tlsCipher = OpenSSLPQCController.tlsCipher
+        tlsKeyExchange = OpenSSLPQCController.tlsKeyExchange
+        tlsServerSig = OpenSSLPQCController.tlsServerSig
+        tlsServerPubKey = OpenSSLPQCController.tlsServerPubKey
         
         // 파일 선택 여부 판단
         caBundleSelected = (OpenSSLPQCController.caBundleFilePath !== "")

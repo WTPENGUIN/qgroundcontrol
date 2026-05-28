@@ -195,50 +195,50 @@ private:
     QByteArray _readBuffer;
     QByteArray _writeBuffer;
     
-     // ========== Socket Notifiers ==========
-     QSocketNotifier* _readNotifier = nullptr;
-     QSocketNotifier* _writeNotifier = nullptr;
-     
-      // ========== TLS Log Buffer ==========
-      QString _tlsLogBuffer;  // Latest 50 lines only
+    // ========== Socket Notifiers ==========
+    QSocketNotifier* _readNotifier = nullptr;
+    QSocketNotifier* _writeNotifier = nullptr;
+
+    // ========== TLS Log Buffer ==========
+    QString _tlsLogBuffer;  // Latest 50 lines only
       
-      // ========== Raw & Decrypted Packet Hex Buffers ==========
-      QString _rawPacketHex;        // Latest 1 encrypted packet (hex string)
-      QString _decryptedPacketHex;  // Latest 1 decrypted packet (hex string)
+    // ========== Raw & Decrypted Packet Hex Buffers ==========
+    QString _rawPacketHex;        // Latest 1 encrypted packet (hex string)
+    QString _decryptedPacketHex;  // Latest 1 decrypted packet (hex string)
 
-       // ========== TLS HandShake Information ==========
-        QString _tlsVersion;
-        QString _tlsCipher;
-        QString _tlsKeyExchange;
-        QString _tlsServerSig;
-        QString _tlsServerPubKey;
+    // ========== TLS HandShake Information ==========
+    QString _tlsVersion      = "";
+    QString _tlsCipher       = "";
+    QString _tlsKeyExchange  = "";
+    QString _tlsServerSig    = "";
+    QString _tlsServerPubKey = "";
      
-       // ========== Worker Thread ==========
-      PQCTLSConnectionWorker* _connectionWorker = nullptr;
-      bool _isConnecting = false;
+    // ========== Worker Thread ==========
+    PQCTLSConnectionWorker* _connectionWorker = nullptr;
+    bool _isConnecting = false;
 
-       // ========== MAVLink Validator ==========
-       MavlinkValidator* m_mavlinkValidator = nullptr;
+    // ========== MAVLink Validator ==========
+    MavlinkValidator* m_mavlinkValidator = nullptr;
 
-       // ========== MAVLink Packet Info ==========
-       QString _mavlinkPacketInfo = "";
+    // ========== MAVLink Packet Info ==========
+    QString _mavlinkPacketInfo = "";
 
-          // ========== Helper Methods ==========
-         QString getPrivateFolderPath() const;
-        void setupSocketNotifiers();
-        void cleanupSocketNotifiers();
-        void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
-         void appendRawPacket(const uint8_t* data, int len);        // Capture encrypted packet
-          void appendDecryptedPacket(const uint8_t* data, int len);  // Capture decrypted packet
-          static QString bytesToHex(const uint8_t* data, int len);   // Convert bytes to hex string
-          void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);       // Extract TLS handshake info
-          QString getMavlinkMessageName(uint32_t msgId);             // Get MAVLink message name from ID
+    // ========== Helper Methods ==========
+    QString getPrivateFolderPath() const;
+    void setupSocketNotifiers();
+    void cleanupSocketNotifiers();
+    void appendTlsLog(const QString& msg);  // Append log to buffer with timestamp
+    void appendRawPacket(const uint8_t* data, int len);       // Capture encrypted packet
+    void appendDecryptedPacket(const uint8_t* data, int len); // Capture decrypted packet
+    static QString bytesToHex(const uint8_t* data, int len);  // Convert bytes to hex string
+    void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);      // Extract TLS handshake info
+    QString getMavlinkMessageName(uint32_t msgId);            // Get MAVLink message name from ID
 
-     // ========== Private Slots ==========
- private slots:
-     void onSocketReadyRead();
-     void onSocketReadyWrite();
-     void onMavlinkPacketValidated(const mavlink_message_t& msg);
+    // ========== Private Slots ==========
+private slots:
+    void onSocketReadyRead();
+    void onSocketReadyWrite();
+    void onMavlinkPacketValidated(const mavlink_message_t& msg);
 
     // ========== JNI Callback Registration ==========
 private:
