@@ -30,6 +30,7 @@ typedef struct pqc_tls_ctx_t pqc_tls_ctx_t;
 }
 
 class PQCTLSConnectionWorker;
+class UDPRoutingWorker;
 
 Q_DECLARE_LOGGING_CATEGORY(OpenSSLPQCControllerLog)
 
@@ -213,9 +214,14 @@ private:
     QString _tlsServerSig    = "";
     QString _tlsServerPubKey = "";
      
-    // ========== Worker Thread ==========
+     // ========== Worker Thread ==========
     PQCTLSConnectionWorker* _connectionWorker = nullptr;
     bool _isConnecting = false;
+    
+    // ========== UDP Routing Worker ==========
+    UDPRoutingWorker* _routingWorker = nullptr;
+    bool _routingEnabled = false;
+    QMutex _routingMutex;
 
     // ========== MAVLink Validator ==========
     MavlinkValidator* m_mavlinkValidator = nullptr;
@@ -233,12 +239,19 @@ private:
     static QString bytesToHex(const uint8_t* data, int len);  // Convert bytes to hex string
     void extractAndLogHandshakeInfo(pqc_tls_ctx_t* ctx);      // Extract TLS handshake info
     QString getMavlinkMessageName(uint32_t msgId);            // Get MAVLink message name from ID
+    
+    // ========== Routing Helper Methods ==========
+    void forwardDataToClient(const QByteArray& data);        // Forward TLS server data to local UDP client
 
     // ========== Private Slots ==========
 private slots:
     void onSocketReadyRead();
     void onSocketReadyWrite();
     void onMavlinkPacketValidated(const mavlink_message_t& msg);
+    
+    // ========== Routing Slots ==========
+    void onRoutingDataReceived(const QByteArray& data);
+    void onRoutingStatusChanged(bool connected);
 
     // ========== JNI Callback Registration ==========
 private:

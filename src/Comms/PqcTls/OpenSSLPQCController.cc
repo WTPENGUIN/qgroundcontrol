@@ -9,6 +9,7 @@
 
 #include "OpenSSLPQCController.h"
 #include "PQCTLSConnectionWorker.h"
+#include "UDPRoutingWorker.h"
 #include "QGCLoggingCategory.h"
 #include "mavlink.h"
 
@@ -40,6 +41,9 @@ OpenSSLPQCController::~OpenSSLPQCController()
 {
     // Disconnect from server (closes connection and cleans up notifiers)
     disconnectFromServer();
+    
+    // Disconnect routing
+    disconnectRouting();
     
     // Clean up MAVLink validator
     if (m_mavlinkValidator) {
@@ -345,30 +349,7 @@ void OpenSSLPQCController::disconnectFromServer()
     setServerConnected(false);
 }
 
-// ========== Routing Connection Methods ==========
 
-void OpenSSLPQCController::routeConnection()
-{
-    qCDebug(OpenSSLPQCControllerLog) << "";
-    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING CONNECT REQUEST ==========";
-    qCDebug(OpenSSLPQCControllerLog) << "  Port            :" << _routingPortNumber;
-    qCDebug(OpenSSLPQCControllerLog) << "==========================================";
-    qCDebug(OpenSSLPQCControllerLog) << "";
-    
-    // TODO: Implement actual routing connection logic
-    setRoutingConnected(true);
-}
-
-void OpenSSLPQCController::disconnectRouting()
-{
-    qCDebug(OpenSSLPQCControllerLog) << "";
-    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING DISCONNECT REQUEST ==========";
-    qCDebug(OpenSSLPQCControllerLog) << "==============================================";
-    qCDebug(OpenSSLPQCControllerLog) << "";
-    
-    // TODO: Implement actual routing disconnection logic
-    setRoutingConnected(false);
-}
 
 // ========== File Import Methods (Android) ==========
 void OpenSSLPQCController::registerJNICallback()
@@ -669,14 +650,22 @@ void OpenSSLPQCController::onSocketReadyRead()
                      << "SysID:" << mavlinkMsg.sysid
                      << "CompID:" << mavlinkMsg.compid;
                  
-                 // Call slot to handle packet info update
-                 onMavlinkPacketValidated(mavlinkMsg);
-                 
-                 // Multiple packets: next onSocketReadyRead() call will extract them
-             }
+                  // Call slot to handle packet info update
+                  onMavlinkPacketValidated(mavlinkMsg);
+                  
+                  // Multiple packets: next onSocketReadyRead() call will extract them
+              }
+          }
+         
+         // Forward decrypted data to routing client (if routing is enabled)
+         if (_routingEnabled) {
+             QByteArray decryptedData((const char*)buf, n);
+             locker.unlock();
+             forwardDataToClient(decryptedData);
+             locker.relock();
          }
-        
-        _readBuffer.append((const char*)buf, n);
+         
+         _readBuffer.append((const char*)buf, n);
         locker.unlock();
         emit dataReceived(_readBuffer);
         
@@ -723,13 +712,17 @@ void OpenSSLPQCController::onSocketReadyWrite()
             totalSent += n;
             
         } else if (n == 0) {
-            // Buffer full or would block
-            qCDebug(OpenSSLPQCControllerLog) << "[WriteEvent] Write would block, retrying later";
-            break;
+            // pqc_tls_write returns 0 for:
+            // - SSL_ERROR_WANT_READ
+            // - SSL_ERROR_WANT_WRITE
+            // Both are recoverable errors, NOT fatal
+            // Data remains in _writeBuffer for next attempt
+            qCDebug(OpenSSLPQCControllerLog) << "[WriteEvent] Write would block (SSL_ERROR_WANT_*), retrying later";
+            break;  // Exit loop and wait for next write event
             
         } else {
-            // Error occurred
-            qCCritical(OpenSSLPQCControllerLog) << "[WriteEvent] Write error, disconnecting";
+            // n < 0: Fatal error (connection broken)
+            qCCritical(OpenSSLPQCControllerLog) << "[WriteEvent] Write fatal error, disconnecting";
             locker.unlock();
             disconnectFromServer();
             return;
@@ -970,4 +963,112 @@ void OpenSSLPQCController::onMavlinkPacketValidated(const mavlink_message_t& msg
         << "Name:" << msgName
         << "Seq:" << msg.seq
         << "Time:" << timeStr;
+}
+
+// ========== UDP Routing Methods ==========
+
+void OpenSSLPQCController::routeConnection()
+{
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING CONNECTION START ==========";
+    
+    // Check if TLS connection exists
+    {
+        QMutexLocker locker(&_contextMutex);
+        if (_pqcCtx == nullptr) {
+            qCCritical(OpenSSLPQCControllerLog) << "[Routing] ❌ Cannot start routing: No TLS connection";
+            setRoutingConnected(false);
+            return;
+        }
+    }
+    
+    // Check if routing already started
+    if (_routingEnabled) {
+        qCDebug(OpenSSLPQCControllerLog) << "[Routing] Routing already active";
+        return;
+    }
+    
+    // Mark routing as enabled
+    _routingEnabled = true;
+    
+    // Create routing worker
+    _routingWorker = new UDPRoutingWorker(this);
+    _routingWorker->setRoutingPort(_routingPortNumber.toInt());
+    
+    // Connect signals
+    connect(_routingWorker, &UDPRoutingWorker::dataReceived,
+            this, &OpenSSLPQCController::onRoutingDataReceived,
+            Qt::QueuedConnection);
+    
+    connect(_routingWorker, &UDPRoutingWorker::statusChanged,
+            this, &OpenSSLPQCController::onRoutingStatusChanged,
+            Qt::QueuedConnection);
+    
+    // Start worker thread
+    _routingWorker->start();
+    
+    qCDebug(OpenSSLPQCControllerLog) << "[Routing] ✅ Routing worker started";
+    qCDebug(OpenSSLPQCControllerLog) << "==============================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+}
+
+void OpenSSLPQCController::disconnectRouting()
+{
+    qCDebug(OpenSSLPQCControllerLog) << "";
+    qCDebug(OpenSSLPQCControllerLog) << "========== ROUTING DISCONNECTION START ==========";
+    
+    _routingEnabled = false;
+    
+    if (_routingWorker) {
+        qCDebug(OpenSSLPQCControllerLog) << "[Routing] Stopping routing worker...";
+        
+        // Disconnect signals
+        disconnect(_routingWorker, nullptr, this, nullptr);
+        
+        // Request worker to stop
+        _routingWorker->requestStop();
+        
+        // Wait for worker to finish
+        if (!_routingWorker->wait(2000)) {
+            qCWarning(OpenSSLPQCControllerLog) << "[Routing] ⚠️ Worker did not stop in time, terminating";
+            _routingWorker->terminate();
+            _routingWorker->wait(1000);
+        }
+        
+        // Delete worker
+        _routingWorker->deleteLater();
+        _routingWorker = nullptr;
+        
+        qCDebug(OpenSSLPQCControllerLog) << "[Routing] ✅ Routing worker stopped";
+    }
+    
+    setRoutingConnected(false);
+    
+    qCDebug(OpenSSLPQCControllerLog) << "===================================================";
+    qCDebug(OpenSSLPQCControllerLog) << "";
+}
+
+void OpenSSLPQCController::forwardDataToClient(const QByteArray& data)
+{
+    if (!_routingEnabled || !_routingWorker) {
+        return;
+    }
+    
+    // Forward decrypted data to routing worker
+    // which will send it to the last active UDP client
+    _routingWorker->forwardDataToClient(data);
+}
+
+void OpenSSLPQCController::onRoutingDataReceived(const QByteArray& data)
+{
+    // Forward received UDP data to TLS server via write buffer
+    // This ensures all TLS writes go through onSocketReadyWrite() for proper synchronization
+    // and prevents conflicts with the main write path
+    writeData(data);
+}
+
+void OpenSSLPQCController::onRoutingStatusChanged(bool connected)
+{
+    qCDebug(OpenSSLPQCControllerLog) << "[Routing] Status changed:" << (connected ? "CONNECTED" : "DISCONNECTED");
+    setRoutingConnected(connected);
 }

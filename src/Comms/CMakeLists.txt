@@ -64,6 +64,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         PqcTls/OpenSSLPQCController.h
         PqcTls/PQCTLSConnectionWorker.cc
         PqcTls/PQCTLSConnectionWorker.h
+        PqcTls/UDPRoutingWorker.cc
+        PqcTls/UDPRoutingWorker.h
         PqcTls/MavlinkValidator.cc
         PqcTls/MavlinkValidator.h
 )
