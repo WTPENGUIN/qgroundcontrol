@@ -325,12 +325,15 @@ void OpenSSLPQCController::disconnectFromServer()
     emit tlsServerSigChanged(_tlsServerSig);
     emit tlsServerPubKeyChanged(_tlsServerPubKey);
 
-    // Reset TLS packet hex
+    // Reset TLS packet hex viewer
     _rawPacketHex = "Awaiting raw packets...";
     _decryptedPacketHex = "Awaiting decrypted packets...";
 
     emit rawPacketHexChanged();
     emit decryptedPacketHexChanged();
+
+    // Reset Mavlink viewer
+    _mavlinkPacketInfo = "Awaiting Mavlink messages...";
 
     // Notice TLS disconnect
     QString msgDisStr = QString::fromUtf8("Disconnect from Socket by User.");

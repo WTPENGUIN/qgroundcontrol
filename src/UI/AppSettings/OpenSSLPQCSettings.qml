@@ -30,6 +30,10 @@ Item {
     property bool isConnected: false
     property bool isRoutingConnected: false
     property bool isReadyToConnect: caBundleSelected && clientCertSelected
+    
+    // Double-click prevention properties
+    property bool connectButtonClickable: true
+    property bool routingButtonClickable: true
 
     // File names for display
     property string caBundleFileName: ""
@@ -61,6 +65,19 @@ Item {
         colorGroupEnabled: true
     }
 
+    // Double-click prevention timers
+    Timer {
+        id: connectClickTimer
+        interval: 1000  // 1 second timeout
+        onTriggered: connectButtonClickable = true
+    }
+
+    Timer {
+        id: routingClickTimer
+        interval: 1000  // 1 second timeout
+        onTriggered: routingButtonClickable = true
+    }
+
     // Helper function to extract filename from full path
     function getFileName(path) {
         if (!path || path === "") return ""
@@ -79,9 +96,10 @@ Item {
         sslLogViewerContent = OpenSSLPQCController.tlsLogBuffer
         
         // Raw & Decrypted Packet Hex 로드
-        rawPacketViewerContent = OpenSSLPQCController.rawPacketHex
-        decryptedPacketViewerContent = OpenSSLPQCController.decryptedPacketHex
-        
+        rawPacketViewerContent = OpenSSLPQCController.rawPacketHex || qsTr("Awaiting raw packets...")
+        decryptedPacketViewerContent = OpenSSLPQCController.decryptedPacketHex || qsTr("Awaiting decrypted packets...")
+        mavlinkViewerContent = OpenSSLPQCController.mavlinkPacketInfo || qsTr("Awaiting Mavlink messages...")
+
         // TLS HandShake Information 로드
         tlsVersion = OpenSSLPQCController.tlsVersion
         tlsCipher = OpenSSLPQCController.tlsCipher
@@ -275,9 +293,13 @@ Item {
                             Layout.maximumWidth: 150
                             text: isConnected ? qsTr("Disconnect") : qsTr("Connect")
                             primary: isConnected
-                            enabled: isReadyToConnect || isConnected
+                            enabled: (isReadyToConnect || isConnected) && connectButtonClickable
                             showBorder: true
                             onClicked: {
+                                // Prevent double-click
+                                connectButtonClickable = false
+                                connectClickTimer.start()
+                                
                                 // Update C++ properties
                                 OpenSSLPQCController.serverIpAddress = ipAddress
                                 OpenSSLPQCController.serverPortNumber = portNumber
@@ -323,7 +345,7 @@ Item {
                                 routingPortNumber = text
                                 OpenSSLPQCController.routingPortNumber = text
                             }
-                            placeholderText: qsTr("14550")
+                            placeholderText: qsTr("18000")
                             numericValuesOnly: true
                         }
                     }
@@ -340,9 +362,13 @@ Item {
                             Layout.maximumWidth: 150
                             text: isRoutingConnected ? qsTr("Disconnect") : qsTr("Route")
                             primary: isRoutingConnected
-                            enabled: true
+                            enabled: routingButtonClickable
                             showBorder: true
                             onClicked: {
+                                // Prevent double-click
+                                routingButtonClickable = false
+                                routingClickTimer.start()
+                                
                                 // Update C++ properties first
                                 OpenSSLPQCController.routingPortNumber = routingPortNumber
                                 

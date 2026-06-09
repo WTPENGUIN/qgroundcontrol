@@ -180,7 +180,7 @@ private:
     bool _serverConnected = false;
     
     // Routing Configuration
-    QString _routingPortNumber = "14550";
+    QString _routingPortNumber = "18000";
     bool _routingConnected = false;
     
     // Credentials
